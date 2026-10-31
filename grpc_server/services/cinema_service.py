@@ -9,7 +9,13 @@ from __future__ import annotations
 
 import grpc
 
-from core.idempotency import IdempotencyStore, OpResult
+from core.idempotency import (
+    IdempotencyConflict,
+    IdempotencyStore,
+    OpResult,
+    booking_fingerprint,
+    cancel_fingerprint,
+)
 from core.locking import StateLock
 from core.storage import (
     RESERVATION_ACTIVE,
@@ -26,6 +32,9 @@ from stubs import cinema_pb2, cinema_pb2_grpc
 
 PESAN_OP = "pesan"
 BATALKAN_OP = "batalkan"
+
+# Batas wajar untuk idempotency key dari klien; UUID hanya 36 karakter.
+_MAX_REQUEST_ID_LENGTH = 128
 
 # Polling kecil: setiap mutasi menaikkan version dan membangunkan listener
 # lewat Condition, jadi polling timeout hanya dipakai untuk memeriksa
@@ -80,6 +89,16 @@ def _batalkan_response(result: OpResult) -> cinema_pb2.BatalkanPesananResponse:
     )
 
 
+def _require_request_id(request_id: str, context) -> None:
+    if not request_id:
+        context.abort(grpc.StatusCode.INVALID_ARGUMENT, "request_id wajib diisi")
+    if len(request_id) > _MAX_REQUEST_ID_LENGTH:
+        context.abort(
+            grpc.StatusCode.INVALID_ARGUMENT,
+            f"request_id maksimal {_MAX_REQUEST_ID_LENGTH} karakter",
+        )
+
+
 class CinemaService(cinema_pb2_grpc.CinemaServiceServicer):
     def __init__(
         self,
@@ -117,8 +136,7 @@ class CinemaService(cinema_pb2_grpc.CinemaServiceServicer):
         )
 
     def PesanKursi(self, request, context):
-        if not request.request_id:
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "request_id wajib diisi")
+        _require_request_id(request.request_id, context)
         if not request.schedule_id:
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, "schedule_id wajib diisi")
         if not request.seat_ids:
@@ -130,6 +148,9 @@ class CinemaService(cinema_pb2_grpc.CinemaServiceServicer):
                 "seat_ids tidak boleh mengandung kursi ganda",
             )
 
+        # Validasi tetap dijalankan sebelum cache: retry dengan payload identik
+        # selalu lolos validasi yang sama, sedangkan payload berubah tetap
+        # ditolak tanpa melemahkan aturan input.
         try:
             known_seats = set(self._state.seat_ids(request.schedule_id))
         except ScheduleNotFoundError:
@@ -144,28 +165,49 @@ class CinemaService(cinema_pb2_grpc.CinemaServiceServicer):
                 f"Kursi {', '.join(unknown)} tidak dikenal pada jadwal {request.schedule_id}",
             )
 
+        fingerprint = booking_fingerprint(PESAN_OP, request.schedule_id, request.seat_ids)
+
         with self._state_lock.hold():
-            cached = self._idempotency.get(PESAN_OP, request.request_id)
+            try:
+                cached = self._idempotency.get(PESAN_OP, request.request_id, fingerprint)
+            except IdempotencyConflict:
+                context.abort(
+                    grpc.StatusCode.FAILED_PRECONDITION,
+                    f"request_id {request.request_id} sudah dipakai untuk permintaan "
+                    "dengan payload berbeda",
+                )
             if cached is not None:
                 return _pesan_response(cached)
 
             try:
                 record = self._state.reserve(request.schedule_id, request.seat_ids)
-                result = OpResult(success=True, message="Reservasi berhasil", reservation=record)
             except SeatUnavailableError as err:
-                result = OpResult(success=False, message=str(err), reservation=None)
-            self._idempotency.save(PESAN_OP, request.request_id, result)
+                # Konflik belum menghasilkan reservasi, jadi tidak disimpan:
+                # percobaan ulang boleh berhasil setelah kursi dibebaskan.
+                return _pesan_response(
+                    OpResult(success=False, message=str(err), reservation=None)
+                )
+            result = OpResult(success=True, message="Reservasi berhasil", reservation=record)
+            self._idempotency.save(PESAN_OP, request.request_id, fingerprint, result)
 
         return _pesan_response(result)
 
     def BatalkanPesanan(self, request, context):
-        if not request.request_id:
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "request_id wajib diisi")
+        _require_request_id(request.request_id, context)
         if not request.reservation_id:
             context.abort(grpc.StatusCode.INVALID_ARGUMENT, "reservation_id wajib diisi")
 
+        fingerprint = cancel_fingerprint(BATALKAN_OP, request.reservation_id)
+
         with self._state_lock.hold():
-            cached = self._idempotency.get(BATALKAN_OP, request.request_id)
+            try:
+                cached = self._idempotency.get(BATALKAN_OP, request.request_id, fingerprint)
+            except IdempotencyConflict:
+                context.abort(
+                    grpc.StatusCode.FAILED_PRECONDITION,
+                    f"request_id {request.request_id} sudah dipakai untuk permintaan "
+                    "dengan payload berbeda",
+                )
             if cached is not None:
                 return _batalkan_response(cached)
 
@@ -177,7 +219,7 @@ class CinemaService(cinema_pb2_grpc.CinemaServiceServicer):
                     f"Reservasi {request.reservation_id} tidak ditemukan",
                 )
             result = OpResult(success=True, message="Reservasi berhasil dibatalkan", reservation=record)
-            self._idempotency.save(BATALKAN_OP, request.request_id, result)
+            self._idempotency.save(BATALKAN_OP, request.request_id, fingerprint, result)
 
         return _batalkan_response(result)
 
