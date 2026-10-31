@@ -27,7 +27,11 @@ def daftar_kursi(schedule_id: str):
 @router.post("/pesan", response_model=PesanKursiOut)
 def pesan_kursi(payload: PesanKursiIn):
     try:
-        return get_gateway().pesan_kursi(payload.schedule_id, payload.seat_ids)
+        return get_gateway().pesan_kursi(
+            payload.schedule_id,
+            payload.seat_ids,
+            payload.request_id,
+        )
     except GatewayError as err:
         # Business failure (kursi tidak tersedia) -> 409 Conflict.
         raise HTTPException(status_code=err.status_code, detail=err.detail) from err

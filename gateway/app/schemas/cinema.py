@@ -28,10 +28,14 @@ class ReservationOut(BaseModel):
 class PesanKursiIn(BaseModel):
     schedule_id: str = Field(min_length=1)
     seat_ids: list[str] = Field(min_length=1)
+    # Opsional: idempotency key dari client. Bila kosong, gateway membuat UUID.
+    request_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class BatalkanPesananIn(BaseModel):
     reservation_id: str = Field(min_length=1)
+    # Opsional: idempotency key dari client. Bila kosong, gateway membuat UUID.
+    request_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class PesanKursiOut(BaseModel):

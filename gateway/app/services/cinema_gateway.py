@@ -42,6 +42,9 @@ def _rpc_error_to_status(err: grpc.RpcError) -> int:
         return 400
     if code == grpc.StatusCode.NOT_FOUND:
         return 404
+    if code == grpc.StatusCode.FAILED_PRECONDITION:
+        # request_id dipakai ulang dengan payload berbeda.
+        return 409
     if code in (grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.DEADLINE_EXCEEDED):
         return 502
     return 500
@@ -87,11 +90,16 @@ class CinemaGateway:
             for kursi in response.daftar_kursi
         ]
 
-    def pesan_kursi(self, schedule_id: str, seat_ids: list[str]) -> dict:
-        # Request ID dibuat gateway SATU kali per operasi logis; retry di
-        # client gRPC tetap memakai ID yang sama sehingga sifat idempotent
-        # tetap terlindungi.
-        request_id = uuid.uuid4().hex
+    def pesan_kursi(
+        self,
+        schedule_id: str,
+        seat_ids: list[str],
+        request_id: Optional[str] = None,
+    ) -> dict:
+        # Request ID dari client dipakai apa adanya agar retry HTTP memakai
+        # key yang sama; bila tidak dikirim, gateway membuat UUID seperti
+        # sebelumnya sehingga client lama tetap kompatibel.
+        request_id = request_id or uuid.uuid4().hex
         try:
             response = self._client.pesan_kursi(request_id, schedule_id, seat_ids)
         except grpc.RpcError as err:
@@ -104,8 +112,12 @@ class CinemaGateway:
         # Business failure (ada kursi yang sudah dipesan) -> conflict, bukan 500.
         raise GatewayError(409, response.message)
 
-    def batalkan_pesanan(self, reservation_id: str) -> dict:
-        request_id = uuid.uuid4().hex
+    def batalkan_pesanan(
+        self,
+        reservation_id: str,
+        request_id: Optional[str] = None,
+    ) -> dict:
+        request_id = request_id or uuid.uuid4().hex
         try:
             response = self._client.batalkan_pesanan(request_id, reservation_id)
         except grpc.RpcError as err:
