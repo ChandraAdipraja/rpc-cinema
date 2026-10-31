@@ -11,7 +11,10 @@ router = APIRouter(prefix="/api")
 @router.post("/batal")
 def batalkan_pesanan(payload: BatalkanPesananIn):
     try:
-        return get_gateway().batalkan_pesanan(payload.reservation_id)
+        return get_gateway().batalkan_pesanan(
+            payload.reservation_id,
+            payload.request_id,
+        )
     except GatewayError as err:
         raise HTTPException(status_code=err.status_code, detail=err.detail) from err
 

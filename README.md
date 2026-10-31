@@ -31,7 +31,8 @@ tanpa partial booking (multi-kursi direservasi all-or-nothing).
 
 - **Jadwal dari server** — 4 film × 3 jam = 12 jadwal (RPC `LihatDaftarJadwal`).
 - **Reservasi multi-kursi all-or-nothing** — pilih beberapa kursi sekaligus; gagal satu kursi = seluruh reservasi dibatalkan server.
-- **Idempotency** — `request_id` per operasi logis: retry jaringan aman, hasil ter-cache (sukses/gagal).
+- **Idempotency** — `request_id` per operasi logis: retry dengan payload identik mengembalikan hasil awal;
+  `request_id` sama dengan payload berbeda ditolak (`FAILED_PRECONDITION`/`409`); TTL 24 jam dan kapasitas terbatas.
 - **Real-time per jadwal** — status kursi disiarkan via gRPC streaming + SSE; subscriber satu jadwal tidak diganggu mutasi jadwal lain.
 - **Tiket Saya** — daftar tiket per perangkat (localStorage); tiket yang hilang karena server restart dilabeli "hilang".
 - **Aman lintas mesin** — client dari dua komputer menuju satu server: race 1 pemenang, no double booking
@@ -55,7 +56,7 @@ cinema-rpc/
 ├── frontend/                 # React + TS + Vite + Tailwind
 │   ├── src/{pages, hooks, services, components}
 │   └── .env.example
-├── tests/                    # pytest: booking, concurrency, retry, streaming, gateway (36 test)
+├── tests/                    # pytest: booking, concurrency, retry, streaming, gateway, idempotency (80 test)
 ├── load_test/                # perf test + locust; hasil di results/
 └── scripts/generate_proto.*  # regenerasi stubs proto
 ```
@@ -186,6 +187,8 @@ Dan jalankan Vite dengan `npm run dev -- --host 0.0.0.0`.
 | `GRPC_PORT` | server | `50051` | Port dengar gRPC server |
 | `GRPC_TARGET` | gateway | `localhost:50051` | Alamat gRPC server yang dituju |
 | `CORS_ORIGINS` | gateway | `http://localhost:5173,http://127.0.0.1:5173` | Origin frontend yang diizinkan (dipisah koma) |
+| `IDEMPOTENCY_TTL_SECONDS` | server | `86400` | TTL entri idempotency (detik); default 24 jam |
+| `IDEMPOTENCY_MAX_ENTRIES` | server | `10000` | Batas jumlah entri idempotency; eviction LRU bila penuh |
 | `VITE_API_URL` | frontend | `http://localhost:8000` | Alamat gateway dari browser |
 
 ## API Gateway (HTTP)
@@ -195,9 +198,9 @@ Dan jalankan Vite dengan `npm run dev -- --host 0.0.0.0`.
 | GET | `/api/health` | — | Cek hidup |
 | GET | `/api/jadwal` | — | Daftar 12 jadwal (film + jam) |
 | GET | `/api/kursi` | `?schedule_id=` | Denah kursi satu jadwal |
-| POST | `/api/pesan` | `{"schedule_id": "...", "seat_ids": ["A1","A2"]}` | Reservasi all-or-nothing; `409` bila ada kursi diambil |
+| POST | `/api/pesan` | `{"schedule_id": "...", "seat_ids": ["A1","A2"], "request_id": "..." (opsional)}` | Reservasi all-or-nothing; `409` bila ada kursi diambil atau `request_id` dipakai ulang dengan payload berbeda |
 | GET | `/api/pesanan/{reservation_id}` | — | Detail reservasi |
-| POST | `/api/batal` | `{"reservation_id": "..."}` | Batalkan → semua kursi dibebaskan |
+| POST | `/api/batal` | `{"reservation_id": "...", "request_id": "..." (opsional)}` | Batalkan → semua kursi dibebaskan |
 | GET | `/api/stream/kursi` | `?schedule_id=` | SSE real-time (server streaming per jadwal) |
 
 Docs interaktif: `http://localhost:8000/docs`.
@@ -216,7 +219,7 @@ Demo tanpa gateway:
 ## Testing
 
 ```powershell
-# Full suite (booking, concurrency, retry, streaming, gateway) — 36 test
+# Full suite (booking, concurrency, retry, streaming, gateway, idempotency) — 80 test
 .venv\Scripts\python.exe -m pytest tests -v
 
 # Perf test: skenario read c=1/5/20 + race booking; tulis hasil ke load_test/results/
@@ -229,10 +232,32 @@ Hasil perf ditulis ke `load_test/results/summary.md` + `chart.png`. Ringkasannya
 - race booking di 1/5/20 client konkuren: **selalu tepat 1 pemenang, `double_booking=0`**.
 - locust UI opsional: `.venv\Scripts\python.exe -m locust -f load_test\locustfile.py` (dengan server+gateway jalan).
 
+## Idempotency (request_id)
+
+Setiap operasi yang mengubah state (`PesanKursi`, `BatalkanPesanan`) menerima
+`request_id` (opsional pada HTTP). Perilaku:
+
+- **Identik**: `request_id` + payload yang sama → hasil awal dikembalikan, tanpa efek samping berulang (bahkan setelah reservasi dibatalkan, snapshot awal tetap AKTIF).
+- **Mismatch**: `request_id` sama tetapi payload berbeda (jadwal, kursi, atau `reservation_id` berbeda) → gRPC `FAILED_PRECONDITION`, gateway `409`, pesan `request_id ... sudah dipakai untuk permintaan dengan payload berbeda`.
+- **Konflik kursi** (`SeatUnavailableError`) **tidak** disimpan, sehingga retry dapat berhasil setelah kursi dibebaskan (tidak ada failure poisoning).
+- **Pembatalan tidak ditemukan** tidak menghasilkan cache sukses palsu.
+- **TTL 24 jam** (`IDEMPOTENCY_TTL_SECONDS`); entri kedaluwarsa dibuang dan operasi diproses ulang.
+- **Kapasitas 10.000 entri** (`IDEMPOTENCY_MAX_ENTRIES`); eviction LRU bila penuh.
+- **Restart server** menghapus seluruh cache (state in-memory).
+
+Contoh HTTP dengan idempotency key:
+
+```json
+POST /api/pesan
+{ "schedule_id": "...", "seat_ids": ["A1","A2"], "request_id": "550e8400-e29b-41d4-a716-446655440000" }
+```
+
+Jika `request_id` tidak dikirim, gateway membuat UUID baru seperti sebelumnya (kompatibel dengan client lama). Catatan: client lama tanpa key tidak mendapat deduplikasi lintas retry HTTP.
+
 ## Catatan Desain
 
 - **All-or-nothing**: server cek & kunci semua kursi dalam satu critical section — tidak pernah ada reservasi setengah jalan.
-- **Idempotency `(op, request_id)`**: request ulang dengan `request_id` sama membalas hasil pertama (termasuk hasil GAGAL) tanpa efek samping berulang.
+- **Idempotency `(op, request_id)`**: request ulang dengan `request_id` sama dan payload identik membalas hasil pertama tanpa efek samping berulang. `request_id` sama dengan payload berbeda ditolak (`FAILED_PRECONDITION`/`409`). Hasil sukses disimpan sebagai snapshot (tidak berubah saat record asli dimutasi); konflik kursi **tidak** disimpan agar percobaan ulang bisa berhasil setelah kursi dibebaskan. TTL 24 jam, kapasitas 10.000 entri dengan eviction LRU; entri kedaluwarsa dibuang; cache hilang saat server restart.
 - **Locking**: satu `RLock` di seluruh state (scope mini-project, benar & sederhana).
 - **Streaming per jadwal**: version counter per `schedule_id`; skip-wait hanya membangunkan subscriber jadwal yang berubah.
 - **My Ticket**: `localStorage` (`cinema-rpc:my-ticket-ids`) — riwayat reservasi TIDAK dibuat di server (server restart = data hilang).

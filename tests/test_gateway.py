@@ -267,3 +267,122 @@ def test_sse_stream_kursi_per_jadwal(gateway, server):
             pytest.fail("Tidak menerima update RESERVED sebelum batas waktu")
 
         server.client.batalkan_pesanan(str(uuid.uuid4()), hasil.reservasi.reservation_id)
+
+
+# -- Idempotency end-to-end lewat HTTP -------------------------------------
+
+
+def _cancel_via_gateway(base: str, reservation_id: str) -> None:
+    httpx.post(
+        f"{base}/api/batal",
+        json={"reservation_id": reservation_id},
+        timeout=10,
+    )
+
+
+def test_pesan_request_id_sama_idempotent_via_gateway(gateway):
+    """Key yang sama dari client harus diteruskan apa adanya ke gRPC."""
+    base = gateway.url
+    schedule_id = _first_two_schedules(base)[0]
+    seat = _available_seats(base, schedule_id, 1)[0]
+    body = {
+        "schedule_id": schedule_id,
+        "seat_ids": [seat],
+        "request_id": uuid.uuid4().hex,
+    }
+
+    pertama = httpx.post(f"{base}/api/pesan", json=body, timeout=10)
+    kedua = httpx.post(f"{base}/api/pesan", json=body, timeout=10)
+
+    assert pertama.status_code == 200
+    assert kedua.status_code == 200
+    reservasi_pertama = pertama.json()["reservasi"]["reservation_id"]
+    reservasi_kedua = kedua.json()["reservasi"]["reservation_id"]
+    # Kalau gateway membuat UUID baru, panggilan kedua akan 409 (kursi sudah
+    # dipegang reservasi pertama) dan tidak mungkin mengembalikan ID sama.
+    assert reservasi_pertama == reservasi_kedua
+
+    _cancel_via_gateway(base, reservasi_pertama)
+
+
+def test_pesan_request_id_sama_payload_berbeda_409(gateway):
+    base = gateway.url
+    schedule_id = _first_two_schedules(base)[0]
+    seats = _available_seats(base, schedule_id, 2)
+    request_id = uuid.uuid4().hex
+
+    pertama = httpx.post(
+        f"{base}/api/pesan",
+        json={"schedule_id": schedule_id, "seat_ids": [seats[0]], "request_id": request_id},
+        timeout=10,
+    )
+    assert pertama.status_code == 200
+
+    kedua = httpx.post(
+        f"{base}/api/pesan",
+        json={"schedule_id": schedule_id, "seat_ids": [seats[1]], "request_id": request_id},
+        timeout=10,
+    )
+    assert kedua.status_code == 409
+    assert "payload berbeda" in kedua.json()["detail"]
+
+    kursi = httpx.get(
+        f"{base}/api/kursi", params={"schedule_id": schedule_id}, timeout=10
+    ).json()
+    assert next(k for k in kursi if k["id"] == seats[1])["status"] == "AVAILABLE"
+
+    _cancel_via_gateway(base, pertama.json()["reservasi"]["reservation_id"])
+
+
+def test_pesan_tanpa_request_id_tetap_kompatibel(gateway):
+    base = gateway.url
+    schedule_id = _first_two_schedules(base)[0]
+    seat = _available_seats(base, schedule_id, 1)[0]
+
+    hasil = httpx.post(
+        f"{base}/api/pesan",
+        json={"schedule_id": schedule_id, "seat_ids": [seat]},
+        timeout=10,
+    )
+
+    assert hasil.status_code == 200
+    assert hasil.json()["success"] is True
+    _cancel_via_gateway(base, hasil.json()["reservasi"]["reservation_id"])
+
+
+def test_batal_request_id_sama_dapat_di_retry(gateway):
+    base = gateway.url
+    schedule_id = _first_two_schedules(base)[0]
+    seat = _available_seats(base, schedule_id, 1)[0]
+
+    booking = httpx.post(
+        f"{base}/api/pesan",
+        json={"schedule_id": schedule_id, "seat_ids": [seat]},
+        timeout=10,
+    )
+    reservation_id = booking.json()["reservasi"]["reservation_id"]
+    request_id = uuid.uuid4().hex
+    body = {"reservation_id": reservation_id, "request_id": request_id}
+
+    pertama = httpx.post(f"{base}/api/batal", json=body, timeout=10)
+    kedua = httpx.post(f"{base}/api/batal", json=body, timeout=10)
+
+    assert pertama.status_code == 200
+    assert kedua.status_code == 200
+    assert pertama.json()["reservasi"]["reservation_id"] == reservation_id
+    assert kedua.json()["reservasi"]["reservation_id"] == reservation_id
+    assert kedua.json()["reservasi"]["status"] == "DIBATALKAN"
+
+
+def test_request_id_terlalu_panjang_ditolak_gateway(gateway):
+    base = gateway.url
+    schedule_id = _first_two_schedules(base)[0]
+    seat = _available_seats(base, schedule_id, 1)[0]
+
+    hasil = httpx.post(
+        f"{base}/api/pesan",
+        json={"schedule_id": schedule_id, "seat_ids": [seat], "request_id": "x" * 129},
+        timeout=10,
+    )
+
+    assert hasil.status_code == 422
