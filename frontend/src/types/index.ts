@@ -18,6 +18,13 @@ export interface BookingResult {
   success: boolean
   message: string
   reservasi?: Reservation
+  /**
+   * true bila request gagal di lapisan jaringan sehingga hasil operasi
+   * TIDAK diketahui — tindakan yang sama boleh diulang dengan request_id
+   * yang sama (backend idempotency tetap berlaku). Kegagalan HTTP yang
+   * jelas (mis. 409 konflik) TIDAK menyetel field ini.
+   */
+  unknownResult?: boolean
 }
 
 export interface Jadwal {

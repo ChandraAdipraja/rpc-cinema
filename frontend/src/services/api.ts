@@ -4,10 +4,22 @@ export const API_URL: string = import.meta.env.VITE_API_URL ?? "http://localhost
 
 export class ApiError extends Error {}
 
+/**
+ * Network error: request mungkin sudah dieksekusi backend atau belum —
+ * HASIL TIDAK DIKETAHUI. Caller boleh mengulang dengan request_id yang sama
+ * (idempotency), TIDAK dengan request_id baru.
+ */
+export class NetworkError extends ApiError {}
+
 async function parseErrorDetail(response: Response): Promise<string> {
   try {
-    const body = (await response.json()) as { detail?: string }
-    if (body.detail) return body.detail
+    const body = (await response.json()) as { detail?: unknown }
+    // FastAPI 422 mengirim detail sebagai array; tampilkan pesan yang dakamati,
+    // bukan "[object Object]".
+    if (response.status === 422 && body.detail) {
+      return "Data yang dikirim tidak valid (HTTP 422). Muat ulang halaman, lalu coba lagi."
+    }
+    if (typeof body.detail === "string" && body.detail) return body.detail
   } catch {
     // body bukan JSON, pakai status text
   }
@@ -36,16 +48,29 @@ export async function fetchSeats(scheduleId: string): Promise<Seat[]> {
   return (await response.json()) as Seat[]
 }
 
-export async function reserveSeats(scheduleId: string, seatIds: string[]): Promise<BookingResult> {
+/**
+ * Reservasi kursi. `requestId` WAJIB berasal dari identitas tindakan
+ * booking (lihat callers) — bukan UUID yang dibuat baru setiap HTTP attempt;
+ * retry tindakan yang sama memakai requestId + payload yang sama.
+ */
+export async function reserveSeats(
+  scheduleId: string,
+  seatIds: string[],
+  requestId: string,
+): Promise<BookingResult> {
   let response: Response
   try {
     response = await fetch(`${API_URL}/api/pesan`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ schedule_id: scheduleId, seat_ids: seatIds }),
+      body: JSON.stringify({ schedule_id: scheduleId, seat_ids: seatIds, request_id: requestId }),
     })
   } catch {
-    return { success: false, message: "Gateway tidak dapat dijangkau. Coba lagi sebentar." }
+    return {
+      success: false,
+      message: "Gateway tidak dapat dijangkau. Coba lagi sebentar.",
+      unknownResult: true,
+    }
   }
   if (!response.ok) {
     return { success: false, message: await parseErrorDetail(response) }
@@ -69,16 +94,20 @@ export async function fetchReservation(reservationId: string): Promise<Reservati
   return (await response.json()) as Reservation
 }
 
-export async function cancelReservation(reservationId: string): Promise<Reservation> {
+/**
+ * Batalkan reservasi. `requestId` berasal dari identitas tindakan pembatalan;
+ * retry yang hasilnya belum diketahui memakai requestId yang sama.
+ */
+export async function cancelReservation(reservationId: string, requestId: string): Promise<Reservation> {
   let response: Response
   try {
     response = await fetch(`${API_URL}/api/batal`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reservation_id: reservationId }),
+      body: JSON.stringify({ reservation_id: reservationId, request_id: requestId }),
     })
   } catch {
-    throw new ApiError("Gateway tidak dapat dijangkau. Coba lagi sebentar.")
+    throw new NetworkError("Gateway tidak dapat dijangkau. Hasil pembatalan belum diketahui — coba lagi sebentar.")
   }
   if (!response.ok) throw new ApiError(await parseErrorDetail(response))
   const body = (await response.json()) as { reservasi: Reservation }
