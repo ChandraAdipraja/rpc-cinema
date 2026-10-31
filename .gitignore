@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# gRPC generated (regenerated via scripts/generate_proto.bat)
+grpc_server/generated/
+gateway/app/grpc_client/generated/
+
+# Node
+node_modules/
+dist/
+*.local
+
+# Env
+.env
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

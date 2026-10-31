@@ -1,0 +1,95 @@
+[
+  {
+    "scenario": "read",
+    "concurrency": 1,
+    "total_requests": 200,
+    "failed_rpc_errors": 0,
+    "elapsed_seconds": 0.08563259999937145,
+    "avg_latency_ms": 0.3941035001844284,
+    "p95_latency_ms": 0.46256499736045953,
+    "throughput_rps": 2335.5591211929573,
+    "success_rate_pct": 100.0,
+    "details": {
+      "error_codes": []
+    }
+  },
+  {
+    "scenario": "race",
+    "concurrency": 1,
+    "total_requests": 1,
+    "failed_rpc_errors": 0,
+    "elapsed_seconds": 0.0005539999983739108,
+    "avg_latency_ms": 0.5539999983739108,
+    "p95_latency_ms": 0.5539999983739108,
+    "throughput_rps": 1805.054156922706,
+    "success_rate_pct": 100.0,
+    "details": {
+      "berhasil_pesan": 1,
+      "ditolak_kursi_terisi": 0,
+      "error_rpc": 0,
+      "double_booking": 0
+    }
+  },
+  {
+    "scenario": "read",
+    "concurrency": 5,
+    "total_requests": 500,
+    "failed_rpc_errors": 0,
+    "elapsed_seconds": 0.11769919999642298,
+    "avg_latency_ms": 1.0328221999516245,
+    "p95_latency_ms": 1.2004699989120127,
+    "throughput_rps": 4248.117234570801,
+    "success_rate_pct": 100.0,
+    "details": {
+      "error_codes": []
+    }
+  },
+  {
+    "scenario": "race",
+    "concurrency": 5,
+    "total_requests": 5,
+    "failed_rpc_errors": 0,
+    "elapsed_seconds": 0.0011426000019127969,
+    "avg_latency_ms": 0.8564199997636024,
+    "p95_latency_ms": 1.263630004177685,
+    "throughput_rps": 4375.984589208499,
+    "success_rate_pct": 100.0,
+    "details": {
+      "berhasil_pesan": 1,
+      "ditolak_kursi_terisi": 4,
+      "error_rpc": 0,
+      "double_booking": 0
+    }
+  },
+  {
+    "scenario": "read",
+    "concurrency": 20,
+    "total_requests": 1000,
+    "failed_rpc_errors": 0,
+    "elapsed_seconds": 0.2516942000002018,
+    "avg_latency_ms": 4.045737500062387,
+    "p95_latency_ms": 4.381029999603925,
+    "throughput_rps": 3973.075263550762,
+    "success_rate_pct": 100.0,
+    "details": {
+      "error_codes": []
+    }
+  },
+  {
+    "scenario": "race",
+    "concurrency": 20,
+    "total_requests": 20,
+    "failed_rpc_errors": 0,
+    "elapsed_seconds": 0.0030421000010392163,
+    "avg_latency_ms": 2.2043449996999698,
+    "p95_latency_ms": 3.0420100010815077,
+    "throughput_rps": 6574.405835826492,
+    "success_rate_pct": 100.0,
+    "details": {
+      "berhasil_pesan": 1,
+      "ditolak_kursi_terisi": 19,
+      "error_rpc": 0,
+      "double_booking": 0
+    }
+  }
+]

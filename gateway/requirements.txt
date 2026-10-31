@@ -1,0 +1,4 @@
+fastapi>=0.118
+uvicorn>=0.37
+grpcio>=1.70,<2
+protobuf>=5.26

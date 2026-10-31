@@ -1,0 +1,115 @@
+syntax = "proto3";
+
+package cinema;
+
+// Service utama sistem reservasi bioskop.
+// Kursi bersifat unik per jadwal (schedule_id = kombinasi film + jam tayang),
+// reservasi bisa memuat beberapa kursi, dan mengubah state selalu idempotent
+// melalui request_id.
+service CinemaService {
+  // Unary: daftar jadwal tayang beserta info film (source of truth server).
+  rpc LihatDaftarJadwal(LihatDaftarJadwalRequest) returns (LihatDaftarJadwalResponse);
+
+  // Unary: mengambil seluruh status kursi untuk satu jadwal.
+  rpc LihatDaftarKursi(LihatDaftarKursiRequest) returns (LihatDaftarKursiResponse);
+
+  // Unary: reservasi multi-kursi multi-seat all-or-nothing, idempotent via request_id.
+  rpc PesanKursi(PesanKursiRequest) returns (PesanKursiResponse);
+
+  // Unary: membatalkan reservasi (idempotent via request_id).
+  rpc BatalkanPesanan(BatalkanPesananRequest) returns (BatalkanPesananResponse);
+
+  // Unary: mengambil detail satu reservasi.
+  rpc LihatDetailPesanan(LihatDetailPesananRequest) returns (LihatDetailPesananResponse);
+
+  // Server streaming: pembaruan status kursi satu jadwal tertentu.
+  rpc StreamStatusKursi(StreamStatusKursiRequest) returns (stream KursiUpdate);
+}
+
+enum StatusKursi {
+  KURSI_AVAILABLE = 0;
+  KURSI_RESERVED = 1;
+}
+
+enum StatusReservasi {
+  RESERVASI_AKTIF = 0;
+  RESERVASI_DIBATALKAN = 1;
+}
+
+message Jadwal {
+  string schedule_id = 1;
+  string judul = 2;
+  string genre = 3;
+  int32 durasi_menit = 4;
+  string jam_tayang = 5;
+}
+
+message Kursi {
+  string id = 1;
+  StatusKursi status = 2;
+}
+
+message Reservation {
+  string reservation_id = 1;
+  string schedule_id = 2;
+  repeated string seat_ids = 3;
+  StatusReservasi status = 4;
+}
+
+message LihatDaftarJadwalRequest {}
+
+message LihatDaftarJadwalResponse {
+  repeated Jadwal daftar_jadwal = 1;
+}
+
+message LihatDaftarKursiRequest {
+  string schedule_id = 1;
+}
+
+message LihatDaftarKursiResponse {
+  string schedule_id = 1;
+  repeated Kursi daftar_kursi = 2;
+}
+
+message PesanKursiRequest {
+  // ID unik satu operasi logis; dipakai ulang saat retry agar tidak diproses dua kali.
+  string request_id = 1;
+  string schedule_id = 2;
+  // Beberapa kursi sekaligus; server menerapkan all-or-nothing.
+  repeated string seat_ids = 3;
+}
+
+message PesanKursiResponse {
+  bool success = 1;
+  string message = 2;
+  Reservation reservasi = 3;
+}
+
+message BatalkanPesananRequest {
+  string request_id = 1;
+  string reservation_id = 2;
+}
+
+message BatalkanPesananResponse {
+  bool success = 1;
+  string message = 2;
+  Reservation reservasi = 3;
+}
+
+message LihatDetailPesananRequest {
+  string reservation_id = 1;
+}
+
+message LihatDetailPesananResponse {
+  bool found = 1;
+  Reservation reservasi = 2;
+}
+
+message StreamStatusKursiRequest {
+  // Hanya kursi pada jadwal ini yang dikirim ke subscriber.
+  string schedule_id = 1;
+}
+
+message KursiUpdate {
+  Kursi kursi = 1;
+}
