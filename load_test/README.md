@@ -16,7 +16,7 @@ Performa diukur melalui dua jalur yang terpisah dari demonstrasi UI:
 
 Skrip otomatis:
 1. untuk setiap level concurrency `1, 5, 20` menyalakan **gRPC server baru** (port dinamis, state selalu fresh, tidak campur data run lain),
-2. menjalankan skenario `read` (LihatDaftarKursi berulang: 200/500/1000 request) dan `race` (semua client lomba pesan kursi A1 sekaligus lewat barrier),
+2. menjalankan skenario `read` (LihatDaftarKursi berulang: 200/500/1000 request) dan `race` (10 ronde per level; tiap ronde server baru + kursi bergiliran `A1..B3`, semua client lomba kursi yang sama lewat barrier),
 3. menulis hasil ke `results/`:
    - `summary.md` — tabel + penjelasan konfigurasi (bahan laporan),
    - `chart.png` — grafik throughput, latensi (avg & p95), dan hasil race,
@@ -118,6 +118,6 @@ sukses logis — persaingan kursi adalah perilaku bisnis yang benar.
 - **Latency**: avg & p95 per RPC.
 - **Throughput**: request/detik.
 - **Total & failed requests**: termasuk error RPC (timeout/unavailable).
-- **Race consistency**: pada setiap level concurrency, hasil yang BENAR adalah
-  tepat 1 client berhasil memesan, sisanya ditolak dengan pesan "kursi sudah
-  dipesan", dan `double_booking = 0`.
+- **Race consistency**: pada setiap ronde, hasil yang BENAR adalah tepat 1 client
+  berhasil memesan, sisanya ditolak dengan pesan "kursi sudah dipesan", dan
+  `double_booking = 0`. Total pemenang per level harus sama dengan jumlah ronde.
