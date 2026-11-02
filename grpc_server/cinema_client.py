@@ -27,7 +27,7 @@ from stubs import cinema_pb2, cinema_pb2_grpc
 
 TResponse = TypeVar("TResponse")
 
-DEFAULT_TARGET = os.getenv("GRPC_TARGET", "192.168.18.229:50051")
+DEFAULT_TARGET = os.getenv("GRPC_TARGET", "localhost:50051")
 DEFAULT_TIMEOUT = 3.0
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_BACKOFF_BASE = 0.5

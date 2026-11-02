@@ -112,7 +112,7 @@ class ScenarioResult:
 
 def _wait_ready(port: int) -> str:
     """Tunggu server siap; kembalikan schedule_id pertama sebagai target skenario."""
-    client = CinemaRpcClient(target=f"192.168.18.229:{port}", timeout=5.0, max_retries=6, backoff_base=0.1)
+    client = CinemaRpcClient(target=f"localhost:{port}", timeout=5.0, max_retries=6, backoff_base=0.1)
     deadline = time.time() + SERVER_STARTUP_TIMEOUT_S
     while time.time() < deadline:
         try:

@@ -8,7 +8,7 @@ Berbeda dari `perf_test.py`:
 
 Jalankan dari root repo:
 
-    python load_test/remote_perf_test.py --target 192.168.18.229:50051
+    python load_test/remote_perf_test.py --target <IP-A>:50051
 
 Hasil ditulis ke `load_test/results/`:
 - `remote_summary.md`  : tabel + catatan konfigurasi

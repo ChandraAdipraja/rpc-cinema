@@ -137,7 +137,7 @@ Topologi paling praktis:
 **A. Di Komputer A — cari IP lokal:**
 
 ```powershell
-ipconfig   # catat IPv4 Address, contoh: 192.168.1.10
+ipconfig   # catat IPv4 Address komputer A (selanjutnya ditulis <IP-A>)
 ```
 
 **B. Di Komputer A — server + gateway (2 terminal):**
@@ -243,7 +243,7 @@ $env:LOG_LEVEL="WARNING"
 .venv\Scripts\python.exe grpc_server\server.py
 
 # device 2 (penguji) — sekali saja: venv + stub proto (scripts\generate_proto)
-$env:GRPC_TARGET="192.168.18.229:50051"
+$env:GRPC_TARGET="<IP-A>:50051"
 .venv\Scripts\python.exe load_test\remote_perf_test.py
 ```
 
@@ -282,12 +282,12 @@ peer sehingga terlihat request datang dari perangkat mana. Contoh:
 ```text
 2026-11-02 10:15:01 INFO  cinema.server   Idempotency store siap: ttl=86400s max_entries=10000
 2026-11-02 10:15:01 INFO  cinema.server   Cinema gRPC Server berjalan di port 50051 (12 jadwal aktif, Ctrl+C untuk berhenti)
-2026-11-02 10:15:14 INFO  cinema.service  [pesan] peer=ipv4:192.168.18.50:52133 rid=550e... schedule=m-gerhana-1030 seats=A1,A2 -> OK reservasi=9f2c... cache=miss 1.8ms
-2026-11-02 10:15:15 INFO  cinema.service  [pesan] peer=ipv4:192.168.18.50:52133 rid=550e... schedule=m-gerhana-1030 seats=A1,A2 -> OK reservasi=9f2c... cache=hit 0.2ms
-2026-11-02 10:15:20 WARN  cinema.service  [pesan] peer=ipv4:192.168.18.50:52133 rid=550e... schedule=m-gerhana-1030 seats=A1,A2 -> MISMATCH payload
-2026-11-02 10:15:31 INFO  cinema.service  [batal] peer=ipv4:192.168.18.50:52133 rid=... reservasi=9f2c... status=CANCELLED cache=miss 0.4ms
-2026-11-02 10:16:02 INFO  cinema.service  [stream] mulai schedule=m-gerhana-1030 peer=ipv4:192.168.18.50:52134
-2026-11-02 10:18:40 INFO  cinema.service  [stream] selesai schedule=m-gerhana-1030 peer=ipv4:192.168.18.50:52134 durasi=158.2s
+2026-11-02 10:15:14 INFO  cinema.service  [pesan] peer=ipv4:<IP-B>:52133 rid=550e... schedule=m-gerhana-1030 seats=A1,A2 -> OK reservasi=9f2c... cache=miss 1.8ms
+2026-11-02 10:15:15 INFO  cinema.service  [pesan] peer=ipv4:<IP-B>:52133 rid=550e... schedule=m-gerhana-1030 seats=A1,A2 -> OK reservasi=9f2c... cache=hit 0.2ms
+2026-11-02 10:15:20 WARN  cinema.service  [pesan] peer=ipv4:<IP-B>:52133 rid=550e... schedule=m-gerhana-1030 seats=A1,A2 -> MISMATCH payload
+2026-11-02 10:15:31 INFO  cinema.service  [batal] peer=ipv4:<IP-B>:52133 rid=... reservasi=9f2c... status=CANCELLED cache=miss 0.4ms
+2026-11-02 10:16:02 INFO  cinema.service  [stream] mulai schedule=m-gerhana-1030 peer=ipv4:<IP-B>:52134
+2026-11-02 10:18:40 INFO  cinema.service  [stream] selesai schedule=m-gerhana-1030 peer=ipv4:<IP-B>:52134 durasi=158.2s
 ```
 
 - `cache=hit` menandakan retry idempotent yang dilayani dari cache; `cache=miss` berarti operasi benar-benar dijalankan.
