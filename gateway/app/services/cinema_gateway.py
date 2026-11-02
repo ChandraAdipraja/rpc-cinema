@@ -133,8 +133,6 @@ class CinemaGateway:
             response = self._client.lihat_detail_pesanan(reservation_id)
         except grpc.RpcError as err:
             raise GatewayError(_rpc_error_to_status(err), f"gRPC error: {err.details()}") from err
-        if not response.found:
-            raise GatewayError(404, f"Reservasi {reservation_id} tidak ditemukan")
         return _reservation_out(response.reservasi)
 
     def stream_kursi(self, schedule_id: str) -> Iterator[dict]:

@@ -7,15 +7,13 @@ tanpa partial booking (multi-kursi direservasi all-or-nothing).
 
 ## Arsitektur
 
-```
-┌─────────────────────── Komputer 1 ───────────────────────┐        ┌──────── Komputer 2 ────────┐
-│                                                          │        │                            │
-│  ┌──────────┐   HTTP/SSE :8000   ┌────────────┐   gRPC   │◀──────►│  Frontend (Vite dev :5173) │
-│  │ gRPC     │◀────────────────  │ FastAPI    │  :50051  │        │  └─ Browser demo           │
-│  │ Server   │                   │ Gateway    │          │        │                            │
-│  │ (state)  │                   │ (stateless)│          │        └────────────────────────────┘
-│  └──────────┘                   └────────────┘          │
-└──────────────────────────────────────────────────────────┘
+```text
+Komputer A                              Komputer B
+┌────────────────────┐   gRPC :50051   ┌──────────────────────────────┐
+│  gRPC Server       │◀────────────────│  FastAPI Gateway :8000       │
+│  (state, satu-     │                 │        ▲ HTTP/SSE            │
+│   satunya sumber)  │                 │  Frontend Vite :5173         │
+└────────────────────┘                 └──────────────────────────────┘
 ```
 
 - **gRPC Server** (`grpc_server/`) — single source of truth. Semua business logic: denah kursi **per jadwal**
@@ -33,15 +31,14 @@ tanpa partial booking (multi-kursi direservasi all-or-nothing).
 - **Reservasi multi-kursi all-or-nothing** — pilih beberapa kursi sekaligus; gagal satu kursi = seluruh reservasi dibatalkan server.
 - **Idempotency** — `request_id` per operasi logis: retry dengan payload identik mengembalikan hasil awal;
   `request_id` sama dengan payload berbeda ditolak (`FAILED_PRECONDITION`/`409`); TTL 24 jam dan kapasitas terbatas.
-- **Real-time per jadwal** — status kursi disiarkan via gRPC streaming + SSE; subscriber satu jadwal tidak diganggu mutasi jadwal lain.
+- **Real-time per jadwal** — status kursi disiarkan via gRPC streaming + SSE. Mutasi memanggil `notify_all`, jadi semua subscriber bangun; masing-masing mengecek version jadwalnya dan hanya subscriber jadwal yang berubah yang mengirim update, sisanya kembali menunggu.
 - **Tiket Saya** — daftar tiket per perangkat (localStorage); tiket yang hilang karena server restart dilabeli "hilang".
 - **Aman lintas mesin** — client dari dua komputer menuju satu server: race 1 pemenang, no double booking
 
 ## Struktur Repo
 
 ```
-cinema-rpc/
-├── AGENT.MD                  # spesifikasi project (sumber keputusan desain)
+rpc-cinema/
 ├── grpc_server/              # server gRPC + business logic
 │   ├── proto/cinema.proto    # kontrak RPC (sumber kode yang digenerate)
 │   ├── core/                 # storage (per jadwal), locking, idempotency
@@ -56,8 +53,8 @@ cinema-rpc/
 ├── frontend/                 # React + TS + Vite + Tailwind
 │   ├── src/{pages, hooks, services, components}
 │   └── .env.example
-├── tests/                    # pytest: booking, concurrency, retry, streaming, gateway, idempotency (85 test)
-├── load_test/                # perf test + locust; hasil di results/
+├── tests/                    # pytest: booking, concurrency, retry, streaming, gateway, idempotency, race 2 device (86 test)
+├── load_test/                # perf test, race dua device, locust; hasil di results/
 └── scripts/generate_proto.*  # regenerasi stubs proto
 ```
 
@@ -68,7 +65,7 @@ cinema-rpc/
 | Python | ≥ 3.10 | server, gateway, test, perf test |
 | Node.js + npm | ≥ 18 | frontend |
 
-> Semua perintah di bawah ditulis untuk **Windows PowerShell** dari **root repo**. Path repo mengandung spasi — selalu pakai tanda kutip bila perlu.
+> Perintah utama ditulis untuk **Windows PowerShell** dari **root repo**; padanan bash ada di bagian "Alternatif Linux/macOS". Path repo mengandung spasi — selalu pakai tanda kutip bila perlu.
 
 ## 1. Setup Awal (sekali saja)
 
@@ -94,6 +91,8 @@ cd ..
 ```powershell
 cmd /c scripts\generate_proto.bat
 ```
+
+> Setelah `git pull` yang mengubah `grpc_server/proto/cinema.proto`, **semua mesin** (A dan B) wajib menjalankan ulang skrip ini. Stub lama bisa gagal membaca field yang sudah berubah.
 
 ## 2. Jalankan di Satu Komputer (3 terminal, dari root)
 
@@ -127,58 +126,135 @@ cmd /c "cd frontend && npm run build"
 # tapi lihat catatan CORS bila diakses dari origin selain localhost:5173
 ```
 
-## 3. Jalankan di Dua Komputer
+### Alternatif Linux/macOS (bash)
 
-Topologi paling praktis:
+Semua perintah dari root repo:
 
-- **Komputer A** (ada Python + repo penuh): gRPC server + gateway.
-- **Komputer B** (cukup Node.js + folder `frontend/`; **tidak perlu Python**): frontend dev + browser demo.
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r grpc_server/requirements.txt -r gateway/requirements.txt -r load_test/requirements.txt httpx
 
-**A. Di Komputer A — cari IP lokal:**
+chmod +x scripts/generate_proto.sh
+./scripts/generate_proto.sh
 
-```powershell
-ipconfig   # catat IPv4 Address, contoh: 192.168.1.10
+python grpc_server/server.py
+python -m uvicorn gateway.app.main:app --host 127.0.0.1 --port 8000
+(cd frontend && npm install && npm run dev)
+python -m pytest tests -q
 ```
 
-**B. Di Komputer A — server + gateway (2 terminal):**
+Untuk dua komputer, variabel environment memakai `export GRPC_TARGET="<IP-A>:50051"` (bukan `$env:`).
+
+## 3. Jalankan di Dua Komputer (bukti gRPC lintas mesin)
+
+Topologi yang diuji: **server gRPC hanya di komputer A**, sedangkan **komputer B menjalankan gateway sendiri** yang menunjuk ke A, plus frontend.
+
+```text
+Komputer A: grpc_server/server.py   (satu-satunya sumber state)
+                    ▲ gRPC :50051
+Komputer B: gateway :8000  ──►  frontend :5173  ──►  browser B
+```
+
+- **A**: repo + Python + venv; cukup menjalankan server gRPC.
+- **B**: repo + Python + venv + Node.js; menjalankan gateway (`GRPC_TARGET=<IP-A>:50051`) + frontend.
+
+### A. Prasyarat di kedua mesin
+
+1. Clone repo, buat venv, install requirements, dan **generate stub proto di masing-masing mesin** (`scripts\generate_proto.bat` atau `./scripts/generate_proto.sh`). Folder `generated/` tidak ikut git.
+2. Catat IP komputer A:
+   - Windows: `ipconfig` → IPv4 Address (selanjutnya ditulis `<IP-A>`)
+   - Linux/macOS: `ip addr` atau `ifconfig`
+3. Windows Firewall di A (PowerShell **Administrator**):
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "Cinema gRPC 50051" -Direction Inbound -Protocol TCP -LocalPort 50051 -Action Allow -Profile Private
+   ```
+
+4. Verifikasi dari B **sebelum** menjalankan aplikasi:
+
+   ```powershell
+   Test-NetConnection <IP-A> -Port 50051   # TcpTestSucceeded : True
+   ```
+
+   Linux/macOS: `nc -vz <IP-A> 50051`.
+
+### B. Komputer A — hanya server gRPC
 
 ```powershell
 .venv\Scripts\python.exe grpc_server\server.py
+```
+
+Bash: `python grpc_server/server.py`. Server menulis log setiap RPC, termasuk `peer` (alamat komputer B).
+
+### C. Komputer B — gateway + frontend
+
+```powershell
+# Terminal 1: gateway B -> gRPC A
+$env:GRPC_TARGET="<IP-A>:50051"
 .venv\Scripts\python.exe -m uvicorn gateway.app.main:app --host 0.0.0.0 --port 8000
+
+# Terminal 2: frontend
+cmd /c "cd frontend && npm run dev -- --host 0.0.0.0"
 ```
 
-Saat Windows Firewall tanya → **Allow access** (jaringan privat). Ini penyebab gagal #1.
+`VITE_API_URL` default `http://localhost:8000` sudah benar karena gateway berjalan di B; CORS default mengizinkan `http://localhost:5173`.
 
-**C. Di Komputer B — frontend (di folder `frontend/`):**
+### D. Verifikasi koneksi gRPC — jangan hanya /api/health
 
-```bat
-set VITE_API_URL=http://<IP-A>:8000
-npm run dev -- --host 0.0.0.0
+`/api/health` hanya mengecek proses gateway dan **tidak** memanggil gRPC. Bukti gateway B tersambung ke server A adalah endpoint yang memanggil gRPC:
+
+```powershell
+Invoke-RestMethod http://localhost:8000/api/jadwal | Select-Object -First 1
 ```
 
-(`VITE_API_URL` menunjuk gateway di komputer A. Di PowerShell: `$env:VITE_API_URL="..."`.)
+Bash: `curl -s http://localhost:8000/api/jadwal | head`.
 
-**D. Verifikasi sebelum demo** — dari komputer B, buka `http://<IP-A>:8000/api/health` → harus `{"status":"ok",...}`. Lalu buka `http://localhost:5173` di browser B.
+- `200` + 12 jadwal → jalur B → A terbukti.
+- `502` → `GRPC_TARGET` salah, server A mati, atau TCP 50051 diblokir.
 
-**E. Demo andalan:** komputer A & B buka jadwal yang sama, pilih kursi sama, tekan pesan bersamaan → tepat satu sukses, satu `409`. Denah di kedua layar update real-time (SSE).
+### E. Demo
 
-### Topologi alternatif (frontend dihost di A, dibuka browser dari B)
+- Buka `http://localhost:5173` di browser B.
+- Bila ingin layar di A juga: jalankan gateway + frontend di A seperti bagian "Satu Komputer" (gateway A memakai default `localhost:50051`). Dua gateway ke satu server gRPC tidak masalah; yang dilarang adalah dua server gRPC.
+- A dan B membuka jadwal yang sama, memilih kursi yang sama, lalu menekan pesan hampir bersamaan → tepat satu sukses, satu `409`. Denah di kedua layar update real-time (SSE).
 
-Browser B membuka `http://<IP-A>:5173` → origin browser bukan `localhost` → set CORS di gateway A:
+### Topologi alternatif (frontend di A, dibuka browser B)
+
+Set CORS di gateway A, jalankan Vite dengan `--host 0.0.0.0`, lalu buka `http://<IP-A>:5173`:
 
 ```powershell
 $env:CORS_ORIGINS = "http://<IP-A>:5173"
 .venv\Scripts\python.exe -m uvicorn gateway.app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Dan jalankan Vite dengan `npm run dev -- --host 0.0.0.0`.
-
 ### Jebakan umum (2 mesin)
 
 1. **JANGAN jalankan gRPC server di dua komputer.** State kursi in-memory → dua server = dua denah berbeda (split-brain). Semua mesin menunjuk SATU server.
 2. **Tiket Saya = per perangkat** (localStorage). Tiket yang dipesan di komputer A tidak muncul di komputer B — ini desain, jelaskan saat demo.
-3. WiFi kampus kadang mengisolasi antar-klien → health check gagal padahal config benar. Solusi: hotspot HP.
+3. WiFi kampus kadang mengisolasi antar-klien → `Test-NetConnection` / `GET /api/jadwal` gagal padahal config benar. Solusi: hotspot HP.
 4. Data hilang saat server di-restart (in-memory). Tiket di "Tiket Saya" akan dilabeli "hilang".
+
+### Checklist bukti demo 2 komputer
+
+> Saat mengambil bukti, pastikan kedua mesin berada di **commit yang sama** (`git rev-parse --short HEAD`) dan sudah generate ulang stub setelah `git pull`. Perbedaan commit/stub bisa membuat hasil tidak sah.
+
+Simpan screenshot / salinan file untuk laporan:
+
+1. `ipconfig` (Windows) atau `ip addr` di A dan B — tunjukkan kedua mesin satu subnet.
+2. `Test-NetConnection <IP-A> -Port 50051` dari B → `TcpTestSucceeded : True`.
+3. `GET http://localhost:8000/api/jadwal` dari B → `200` berisi 12 jadwal (bukan hanya `/api/health`).
+4. Log server A memuat `peer=ipv4:<IP-B>:...` saat B memesan atau membatalkan kursi.
+5. `python load_test/remote_perf_test.py --target <IP-A>:50051` di B → simpan `load_test/results/remote_summary.md`, `remote_results.json`, dan `remote_chart.png`.
+6. `python load_test/race_two_devices.py` di A dan B dengan `--start-at`, `--seat`, dan `--rounds` yang sama → gabungkan kedua JSON; **setiap kursi harus tepat 1 MENANG** dan `double_booking = 0`.
+7. Uji retry: matikan server A sebentar, lalu dari B kirim booking dengan `request_id` tetap (ganti `<schedule-id>` dari `/api/jadwal`):
+
+   ```powershell
+   $body = '{"schedule_id":"<schedule-id>","seat_ids":["A1"],"request_id":"demo-retry-1"}'
+   Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/pesan -ContentType application/json -Body $body
+   ```
+
+   Saat A mati → `502`. Hidupkan A dan kirim body yang sama → reservasi yang sama dikembalikan (bukan double booking), membuktikan `request_id` + retry klien.
 
 ## Variabel Environment
 
@@ -220,17 +296,20 @@ Demo tanpa gateway:
 ## Testing
 
 ```powershell
-# Full suite (booking, concurrency, retry, streaming, gateway, idempotency) — 85 test
+# Full suite (booking, concurrency, retry, streaming, gateway, idempotency, race 2 device) — 86 test
 .venv\Scripts\python.exe -m pytest tests -v
 
-# Perf test: skenario read c=1/5/20 + race booking; tulis hasil ke load_test/results/
+# Perf test: skenario read c=1/5/20 + race 10 ronde; tulis hasil ke load_test/results/
 .venv\Scripts\python.exe load_test\perf_test.py
+
+# Race dua device (jalankan di A dan B dengan --start-at/--seat/--rounds sama)
+.venv\Scripts\python.exe load_test\race_two_devices.py --label A --seat A1 --rounds 6 --start-at 20:15:00
 ```
 
 Hasil perf ditulis ke `load_test/results/summary.md` + `chart.png`. Ringkasannya:
 
-- read: 2.3k → 4.2k req/s (c=1→5), p95 kecil, 0 error;
-- race booking di 1/5/20 client konkuren: **selalu tepat 1 pemenang, `double_booking=0`**.
+- read: 2.3k → 4.2k req/s (c=1→5), p95 kecil, 0 error (angka dari run sebelumnya; jalankan ulang untuk data terbaru);
+- race booking **10 ronde per level** pada 1/5/20 client konkuren: tepat 1 pemenang per ronde, `double_booking=0`. Angka di `results/` perlu diregenerasi setelah perubahan metode ini.
 - locust UI opsional: `.venv\Scripts\python.exe -m locust -f load_test\locustfile.py` (dengan server+gateway jalan).
 
 ### Uji dari device lain (LAN)
@@ -243,7 +322,7 @@ $env:LOG_LEVEL="WARNING"
 .venv\Scripts\python.exe grpc_server\server.py
 
 # device 2 (penguji) — sekali saja: venv + stub proto (scripts\generate_proto)
-$env:GRPC_TARGET="192.168.18.229:50051"
+$env:GRPC_TARGET="<IP-A>:50051"
 .venv\Scripts\python.exe load_test\remote_perf_test.py
 ```
 
@@ -282,12 +361,12 @@ peer sehingga terlihat request datang dari perangkat mana. Contoh:
 ```text
 2026-11-02 10:15:01 INFO  cinema.server   Idempotency store siap: ttl=86400s max_entries=10000
 2026-11-02 10:15:01 INFO  cinema.server   Cinema gRPC Server berjalan di port 50051 (12 jadwal aktif, Ctrl+C untuk berhenti)
-2026-11-02 10:15:14 INFO  cinema.service  [pesan] peer=ipv4:192.168.18.50:52133 rid=550e... schedule=m-gerhana-1030 seats=A1,A2 -> OK reservasi=9f2c... cache=miss 1.8ms
-2026-11-02 10:15:15 INFO  cinema.service  [pesan] peer=ipv4:192.168.18.50:52133 rid=550e... schedule=m-gerhana-1030 seats=A1,A2 -> OK reservasi=9f2c... cache=hit 0.2ms
-2026-11-02 10:15:20 WARN  cinema.service  [pesan] peer=ipv4:192.168.18.50:52133 rid=550e... schedule=m-gerhana-1030 seats=A1,A2 -> MISMATCH payload
-2026-11-02 10:15:31 INFO  cinema.service  [batal] peer=ipv4:192.168.18.50:52133 rid=... reservasi=9f2c... status=CANCELLED cache=miss 0.4ms
-2026-11-02 10:16:02 INFO  cinema.service  [stream] mulai schedule=m-gerhana-1030 peer=ipv4:192.168.18.50:52134
-2026-11-02 10:18:40 INFO  cinema.service  [stream] selesai schedule=m-gerhana-1030 peer=ipv4:192.168.18.50:52134 durasi=158.2s
+2026-11-02 10:15:14 INFO  cinema.service  [pesan] peer=ipv4:<IP-B>:52133 rid=550e... schedule=m-gerhana-1030 seats=A1,A2 -> OK reservasi=9f2c... cache=miss 1.8ms
+2026-11-02 10:15:15 INFO  cinema.service  [pesan] peer=ipv4:<IP-B>:52133 rid=550e... schedule=m-gerhana-1030 seats=A1,A2 -> OK reservasi=9f2c... cache=hit 0.2ms
+2026-11-02 10:15:20 WARN  cinema.service  [pesan] peer=ipv4:<IP-B>:52133 rid=550e... schedule=m-gerhana-1030 seats=A1,A2 -> MISMATCH payload
+2026-11-02 10:15:31 INFO  cinema.service  [batal] peer=ipv4:<IP-B>:52133 rid=... reservasi=9f2c... status=CANCELLED cache=miss 0.4ms
+2026-11-02 10:16:02 INFO  cinema.service  [stream] mulai schedule=m-gerhana-1030 peer=ipv4:<IP-B>:52134
+2026-11-02 10:18:40 INFO  cinema.service  [stream] selesai schedule=m-gerhana-1030 peer=ipv4:<IP-B>:52134 durasi=158.2s
 ```
 
 - `cache=hit` menandakan retry idempotent yang dilayani dari cache; `cache=miss` berarti operasi benar-benar dijalankan.
@@ -300,5 +379,5 @@ peer sehingga terlihat request datang dari perangkat mana. Contoh:
 - **All-or-nothing**: server cek & kunci semua kursi dalam satu critical section — tidak pernah ada reservasi setengah jalan.
 - **Idempotency `(op, request_id)`**: request ulang dengan `request_id` sama dan payload identik membalas hasil pertama tanpa efek samping berulang. `request_id` sama dengan payload berbeda ditolak (`FAILED_PRECONDITION`/`409`). Hasil sukses disimpan sebagai snapshot (tidak berubah saat record asli dimutasi); konflik kursi **tidak** disimpan agar percobaan ulang bisa berhasil setelah kursi dibebaskan. TTL 24 jam, kapasitas 10.000 entri dengan eviction LRU; entri kedaluwarsa dibuang; cache hilang saat server restart.
 - **Locking**: satu `RLock` di seluruh state (scope mini-project, benar & sederhana).
-- **Streaming per jadwal**: version counter per `schedule_id`; skip-wait hanya membangunkan subscriber jadwal yang berubah.
+- **Streaming per jadwal**: mutasi memanggil `Condition.notify_all()` sehingga semua subscriber bangun; tiap subscriber mengecek version jadwalnya, dan hanya yang berubah mengirim update (sisanya kembali menunggu). Hasilnya tetap benar dan tidak ada update lintas jadwal.
 - **My Ticket**: `localStorage` (`cinema-rpc:my-ticket-ids`) — riwayat reservasi TIDAK dibuat di server (server restart = data hilang).
