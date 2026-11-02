@@ -1,8 +1,8 @@
 # Remote gRPC Performance Test
 
-- Target          : `localhost:50073`
+- Target          : `192.168.18.229:50051`
 - Schedule        : `m-gerhana-1030`
-- Waktu           : 2026-11-02 16:23:24
+- Waktu           : 2026-11-02 16:37:38
 - Mesin penguji   : `DESKTOP-DNJ4J66` (Windows 11)
 - Python          : 3.14.7
 - Mode            : read-only `LihatDaftarKursi` (tanpa spawn server, tanpa booking)
@@ -11,9 +11,9 @@
 
 | Concurrency | Requests | Errors | Avg (ms) | p95 (ms) | Throughput (req/s) | Success |
 |---|---|---|---|---|---|---|
-| 1 | 200 | 0 | 0.63 | 0.93 | 1590.3 | 100.0% |
-| 5 | 500 | 0 | 1.83 | 2.49 | 2719.0 | 100.0% |
-| 20 | 1000 | 0 | 8.89 | 15.86 | 2213.4 | 100.0% |
+| 1 | 200 | 0 | 8.07 | 16.57 | 123.9 | 100.0% |
+| 5 | 500 | 0 | 14.55 | 31.97 | 310.5 | 100.0% |
+| 20 | 1000 | 0 | 38.72 | 76.25 | 511.7 | 100.0% |
 
 ## Catatan
 
