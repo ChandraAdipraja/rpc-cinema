@@ -350,7 +350,6 @@ class CinemaService(cinema_pb2_grpc.CinemaServiceServicer):
             record.status,
         )
         return cinema_pb2.LihatDetailPesananResponse(
-            found=True,
             reservasi=_reservation_message(record),
         )
 

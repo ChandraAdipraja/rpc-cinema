@@ -92,6 +92,8 @@ cd ..
 cmd /c scripts\generate_proto.bat
 ```
 
+> Setelah `git pull` yang mengubah `grpc_server/proto/cinema.proto`, **semua mesin** (A dan B) wajib menjalankan ulang skrip ini. Stub lama bisa gagal membaca field yang sudah berubah.
+
 ## 2. Jalankan di Satu Komputer (3 terminal, dari root)
 
 **Terminal 1 — gRPC server**
@@ -234,6 +236,8 @@ $env:CORS_ORIGINS = "http://<IP-A>:5173"
 4. Data hilang saat server di-restart (in-memory). Tiket di "Tiket Saya" akan dilabeli "hilang".
 
 ### Checklist bukti demo 2 komputer
+
+> Saat mengambil bukti, pastikan kedua mesin berada di **commit yang sama** (`git rev-parse --short HEAD`) dan sudah generate ulang stub setelah `git pull`. Perbedaan commit/stub bisa membuat hasil tidak sah.
 
 Simpan screenshot / salinan file untuk laporan:
 
