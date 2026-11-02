@@ -1,6 +1,6 @@
 # Hasil Performance Test Cinema RPC
 
-Dihasilkan otomatis oleh `perf_test.py` pada 2026-11-02 16:02:02.
+Dihasilkan otomatis oleh `perf_test.py` pada 2026-11-02 17:12:47.
 
 ## Konfigurasi pengujian
 
@@ -8,9 +8,11 @@ Dihasilkan otomatis oleh `perf_test.py` pada 2026-11-02 16:02:02.
 - Target langsung: gRPC Server (belum melalui FastAPI Gateway).
 - Skenario `read`: 1 client = 1 THREAD = 1 koneksi gRPC; tanpa think-time;
   jumlah request per level: 1 client x 200, 5 client x 100, 20 client x 50 req.
-- Skenario `race`: seluruh client memanggil PesanKursi kursi A1 serentak (barrier);
-  tiap client lakukan warmup koneksi 1x LihatDaftarKursi sebelum barrier agar yang
-  terukur hanya latensi booking, bukan DNS/TCP setup.
+- Skenario `race`: 10 ronde per level; tiap ronde memakai server baru
+  (state fresh) dan kursi bergiliran A1, A2, A3, B1, B2, B3 (berputar bila ronde > 6);
+  seluruh client pada satu ronde memanggil PesanKursi untuk kursi yang sama serentak
+  (barrier); tiap client lakukan warmup koneksi 1x LihatDaftarKursi sebelum barrier agar
+  yang terukur hanya latensi booking, bukan DNS/TCP setup.
 - Server: 1 instance gRPC baru per skenario (state in-memory selalu fresh),
   ThreadPoolExecutor 32 worker, port dinamis.
 - Latensi diukur dengan `time.perf_counter()` per panggilan RPC; warmup 10 call
@@ -26,22 +28,22 @@ ambigu karena 1 worker memang tepat 1 koneksi.
 
 | Jenis | Client | Total Req | RPC Error | Avg (ms) | P95 (ms) | Throughput (req/s) | Success Rate |
 |---|---|---|---|---|---|---|---|
-| read | 1 | 200 | 0 | 0.72 | 1.02 | 1297.8 | 100.0% |
-| read | 5 | 500 | 0 | 2.05 | 2.88 | 2136.7 | 100.0% |
-| read | 20 | 1000 | 0 | 8.19 | 10.16 | 1919.2 | 100.0% |
+| read | 1 | 200 | 0 | 1.61 | 3.56 | 580.6 | 100.0% |
+| read | 5 | 500 | 0 | 2.45 | 3.96 | 1785.8 | 100.0% |
+| read | 20 | 1000 | 0 | 9.90 | 11.75 | 1617.4 | 100.0% |
 
-## Tabel hasil skenario `race` (PesanKursi, kursi sama)
+## Tabel hasil skenario `race` (PesanKursi, kursi sama per ronde)
 
-| Jenis | Client | Total Attempt | RPC Error | Avg (ms) | P95 (ms) | Latensi terlama (ms) | Success Rate* |
-|---|---|---|---|---|---|---|---|
-| race | 1 | 1 | 0 | 4.27 | 4.27 | 4.27 | 100.0% |
-| race | 5 | 5 | 0 | 2.71 | 3.47 | 3.33 | 100.0% |
-| race | 20 | 20 | 0 | 5.88 | 9.24 | 9.24 | 100.0% |
+| Jenis | Client | Ronde | Total Attempt | Menang | Double Booking | RPC Error | Avg (ms) | P95 (ms) | Success Rate* |
+|---|---|---|---|---|---|---|---|---|---|
+| race | 1 | 10 | 10 | 10 | 0 | 0 | 1.43 | 2.30 | 100.0% |
+| race | 5 | 10 | 50 | 10 | 0 | 0 | 3.27 | 9.47 | 100.0% |
+| race | 20 | 10 | 200 | 10 | 0 | 0 | 5.37 | 8.67 | 100.0% |
 
 \* Race test: "success rate" 100% berarti SEMUA attempt mendapat response valid
-(1 yang berhasil memesan, sisanya ditolak server karena kursi sudah terisi —
-ini perilaku yang BENAR). "Latensi terlama" = attempt paling lambat di antara
-seluruh client pada level tersebut (biasanya pemenang kursi). Rincian per level:
-- 1 client: 1 berhasil, 0 ditolak, 0 RPC error, double booking = 0
-- 5 client: 1 berhasil, 4 ditolak, 0 RPC error, double booking = 0
-- 20 client: 1 berhasil, 19 ditolak, 0 RPC error, double booking = 0
+(tepat 1 yang berhasil memesan per ronde, sisanya ditolak server karena kursi sudah
+terisi — ini perilaku yang BENAR). `Double Booking` harus 0; nilainya dihitung dari
+kelebihan pemenang pada setiap ronde. Rincian per level:
+- 1 client: 10 ronde, 10 menang, 0 ditolak, 0 RPC error, double booking = 0
+- 5 client: 10 ronde, 10 menang, 40 ditolak, 0 RPC error, double booking = 0
+- 20 client: 10 ronde, 10 menang, 190 ditolak, 0 RPC error, double booking = 0
