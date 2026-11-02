@@ -1,10 +1,11 @@
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { Jadwal } from "../types"
 import { useJadwals } from "../hooks/useJadwals"
 import { useSeats } from "../hooks/useSeats"
 import { groupJadwalsByFilm, filmIdFromSchedule } from "../services/movies"
 import { reserveSeats } from "../services/api"
+import { newRequestId } from "../services/requestId"
 import { Button } from "../components/ui/Button"
 import { Badge } from "../components/ui/Badge"
 import { ErrorAlert } from "../components/ui/Alerts"
@@ -35,6 +36,22 @@ export function BookingPage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
+  /**
+   * Identitas tindakan booking yang sedang berlangsung (request_id idempotency).
+   * Disimpan di ref — intinya:
+   * - Tindakan baru -> request_id baru.
+   * - Retry hasil-unknown -> request_id & payload SAMA.
+   * - Respons definitif (sukses/409/422) atau payload berubah -> identity dibuang.
+   * Ref tidak di-reset oleh re-render React.
+   */
+  interface PendingBooking {
+    requestId: string
+    scheduleId: string
+    seatIds: string[]
+  }
+  const pendingBookingRef = useRef<PendingBooking | null>(null)
+  const [hasilTakDiketahui, setHasilTakDiketahui] = useState(false)
+
   // Buang pilihan yang kursinya ternyata sudah diambil orang lain (SSE).
   useEffect(() => {
     if (!seats) return
@@ -56,18 +73,57 @@ export function BookingPage() {
     if (scheduleId !== paramSchedule) {
       setSearchParams({ schedule: scheduleId }, { replace: true })
       setSubmitError(null)
+      // Ganti jadwal = mulai konteks booking baru; identity lama tidak relevan.
+      setHasilTakDiketahui(false)
+      pendingBookingRef.current = null
     }
   }
 
   async function handleReserve() {
     if (!jadwalAktif || selectedSeatIds.length === 0 || submitting) return
+    // Snapshot payload: try urut yang deterministik agar fingerprint backend stabil
+    // pada retry tindakan yang sama.
+    const scheduleId = jadwalAktif.schedule_id
+    const seatIds = [...selectedSeatIds].sort()
+
+    // Payload berubah sejak tindakan terakhir -> bukan tindakan yang sama;
+    // identity lama dibuang dan dianggap booking baru.
+    const pending = pendingBookingRef.current
+    if (
+      pending &&
+      (pending.scheduleId !== scheduleId ||
+        pending.seatIds.join(",") !== seatIds.join(","))
+    ) {
+      pendingBookingRef.current = null
+    }
+    // Tindakan baru (atau pending sudah dibuang) -> request_id baru, tepat satu.
+    if (!pendingBookingRef.current) {
+      pendingBookingRef.current = { requestId: newRequestId(), scheduleId, seatIds }
+    }
+
     setSubmitting(true)
     setSubmitError(null)
-    const result = await reserveSeats(jadwalAktif.schedule_id, selectedSeatIds)
+    // Retry hasil-unknown memakai requestId yang TIDAK dibuat ulang di sini.
+    const result = await reserveSeats(scheduleId, seatIds, pendingBookingRef.current.requestId)
     setSubmitting(false)
+
     if (result.success && result.reservasi) {
+      // Tindakan selesai; aksi booking berikutnya akan membuat request_id baru.
+      pendingBookingRef.current = null
+      setHasilTakDiketahui(false)
       navigate(`/reservasi/${result.reservasi.reservation_id}`)
       return
+    }
+
+    if (result.unknownResult) {
+      // Hasil tidak diketahui -> PERTAHANKAN identity; tombol Reservasi / Coba lagi
+      // mengulang dengan request_id + payload yang sama, tanpa double-booking.
+      setHasilTakDiketahui(true)
+    } else {
+      // Respons HTTP jelas (409 konflik/payload mismatch, 422, dll.) -> tindakan
+      // selesai; 409 TIDAK diulang otomatis. Click berikutnya = tindakan baru.
+      pendingBookingRef.current = null
+      setHasilTakDiketahui(false)
     }
     setSubmitError(result.message)
   }
@@ -143,11 +199,21 @@ export function BookingPage() {
       </section>
 
       {submitError && <ErrorAlert message={submitError} />}
+      {hasilTakDiketahui && !submitting && (
+        <p className="text-xs text-neutral-400">
+          Hasil reservasi belum diketahui. Tekan tombol untuk mencoba ulang dengan booking yang sama —
+          backend menjamin satu request_id tidak diproses dua kali.
+        </p>
+      )}
 
       <section className="sticky bottom-4 flex flex-col gap-3 rounded-xl border border-neutral-800 bg-neutral-900/95 p-5 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-neutral-300">{ringkasanKursi}</p>
-        <Button onClick={handleReserve} disabled={selectedSeatIds.length === 0} isLoading={submitting}>
-          Reservasi Sekarang
+        <Button
+          onClick={handleReserve}
+          disabled={selectedSeatIds.length === 0}
+          isLoading={submitting}
+        >
+          {hasilTakDiketahui ? "Coba Lagi" : "Reservasi Sekarang"}
         </Button>
       </section>
     </div>

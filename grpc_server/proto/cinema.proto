@@ -2,6 +2,10 @@ syntax = "proto3";
 
 package cinema;
 
+// Konvensi penamaan:
+// - Nama RPC dan field domain memakai bahasa Indonesia (mis. LihatDaftarJadwal, reservasi, kursi).
+// - Field teknis/protokol memakai bahasa Inggris (request_id, schedule_id, success, message).
+
 // Service utama sistem reservasi bioskop.
 // Kursi bersifat unik per jadwal (schedule_id = kombinasi film + jam tayang),
 // reservasi bisa memuat beberapa kursi, dan mengubah state selalu idempotent
@@ -13,7 +17,7 @@ service CinemaService {
   // Unary: mengambil seluruh status kursi untuk satu jadwal.
   rpc LihatDaftarKursi(LihatDaftarKursiRequest) returns (LihatDaftarKursiResponse);
 
-  // Unary: reservasi multi-kursi multi-seat all-or-nothing, idempotent via request_id.
+  // Unary: reservasi multi-kursi all-or-nothing, idempotent via request_id.
   rpc PesanKursi(PesanKursiRequest) returns (PesanKursiResponse);
 
   // Unary: membatalkan reservasi (idempotent via request_id).
@@ -101,7 +105,8 @@ message LihatDetailPesananRequest {
 }
 
 message LihatDetailPesananResponse {
-  bool found = 1;
+  // Nomor 1 di-reserve: field `found` dihapus karena server selalu abort(NOT_FOUND).
+  reserved 1;
   Reservation reservasi = 2;
 }
 
