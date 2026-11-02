@@ -1,0 +1,82 @@
+{
+  "label": "A",
+  "target": "localhost:50051",
+  "schedule_id": "m-gerhana-1030",
+  "start_at": "19:40:00",
+  "generated_at": "2026-11-02T19:40:00",
+  "rounds": [
+    {
+      "round": 1,
+      "label": "A",
+      "seat": "A1",
+      "fired_at": "19:40:00.004",
+      "outcome": "KONFLIK",
+      "latency_ms": 4.112099995836616,
+      "request_id": "b45f2aedcc604291985b36f6562d8e01",
+      "reservation_id": null,
+      "detail": "Kursi A1 sudah dipesan"
+    },
+    {
+      "round": 2,
+      "label": "A",
+      "seat": "A2",
+      "fired_at": "19:40:00.007",
+      "outcome": "KONFLIK",
+      "latency_ms": 2.1884999878238887,
+      "request_id": "299c4ae0e4364976aeb0416977f3d973",
+      "reservation_id": null,
+      "detail": "Kursi A2 sudah dipesan"
+    },
+    {
+      "round": 3,
+      "label": "A",
+      "seat": "A3",
+      "fired_at": "19:40:00.009",
+      "outcome": "KONFLIK",
+      "latency_ms": 2.0517999946605414,
+      "request_id": "cf9c4d0967964c4ab958874465d6991d",
+      "reservation_id": null,
+      "detail": "Kursi A3 sudah dipesan"
+    },
+    {
+      "round": 4,
+      "label": "A",
+      "seat": "B1",
+      "fired_at": "19:40:00.017",
+      "outcome": "KONFLIK",
+      "latency_ms": 5.601500000921078,
+      "request_id": "5b76d652a96548068a55ecbe71fdab8d",
+      "reservation_id": null,
+      "detail": "Kursi B1 sudah dipesan"
+    },
+    {
+      "round": 5,
+      "label": "A",
+      "seat": "B2",
+      "fired_at": "19:40:00.023",
+      "outcome": "KONFLIK",
+      "latency_ms": 5.7087000022875145,
+      "request_id": "b973187b8df24882bc14f2514970b149",
+      "reservation_id": null,
+      "detail": "Kursi B2 sudah dipesan"
+    },
+    {
+      "round": 6,
+      "label": "A",
+      "seat": "B3",
+      "fired_at": "19:40:00.025",
+      "outcome": "KONFLIK",
+      "latency_ms": 1.36160000693053,
+      "request_id": "bc9c082be3e24d58a144f3fedb4b4abf",
+      "reservation_id": null,
+      "detail": "Kursi B3 sudah dipesan"
+    }
+  ],
+  "summary": {
+    "rounds": 6,
+    "menang": 0,
+    "konflik": 6,
+    "error": 0,
+    "avg_latency_ms": 3.504
+  }
+}
