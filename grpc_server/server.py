@@ -7,6 +7,7 @@ Jalankan: .venv/Scripts/python.exe grpc_server/server.py
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from concurrent import futures
@@ -25,6 +26,10 @@ from services.cinema_service import CinemaService
 from stubs import cinema_pb2_grpc
 
 GRPC_PORT = os.getenv("GRPC_PORT", "50051")
+
+# Level log server; default INFO. Untuk load test pakai WARNING agar tidak
+# menggerus throughput karena setiap RPC menulis satu baris log.
+LOG_LEVEL_ENV = "LOG_LEVEL"
 
 DEFAULT_SEAT_IDS = ("A1", "A2", "A3", "B1", "B2", "B3")
 
@@ -56,6 +61,20 @@ def build_schedules() -> list[Schedule]:
     return schedules
 
 
+def _configure_logging() -> logging.Logger:
+    """Aktifkan log server (stdout) dengan level dari LOG_LEVEL."""
+    level_name = os.getenv(LOG_LEVEL_ENV, "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)-5s %(name)s  %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        stream=sys.stdout,
+        force=True,
+    )
+    return logging.getLogger("cinema.server")
+
+
 def build_service() -> CinemaService:
     state_lock = StateLock()
     state = CinemaState(
@@ -64,16 +83,25 @@ def build_service() -> CinemaService:
         seat_ids=DEFAULT_SEAT_IDS,
     )
     idempotency = IdempotencyStore()
+    logging.getLogger("cinema.server").info(
+        "Idempotency store siap: ttl=%ss max_entries=%s",
+        idempotency.ttl_seconds,
+        idempotency.max_entries,
+    )
     return CinemaService(state=state, idempotency=idempotency, state_lock=state_lock)
 
 
 def serve() -> None:
+    logger = _configure_logging()
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=MAX_WORKERS))
     cinema_pb2_grpc.add_CinemaServiceServicer_to_server(build_service(), server)
     server.add_insecure_port(f"[::]:{GRPC_PORT}")
     server.start()
-    print(f"[server] Cinema gRPC Server berjalan di port {GRPC_PORT} "
-          f"({len(build_schedules())} jadwal aktif, Ctrl+C untuk berhenti)")
+    logger.info(
+        "Cinema gRPC Server berjalan di port %s (%d jadwal aktif, Ctrl+C untuk berhenti)",
+        GRPC_PORT,
+        len(build_schedules()),
+    )
     server.wait_for_termination()
 
 

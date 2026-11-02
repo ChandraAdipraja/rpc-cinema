@@ -7,6 +7,8 @@ tidak mengulang efek samping.
 
 from __future__ import annotations
 
+import logging
+
 import grpc
 import pytest
 
@@ -33,6 +35,16 @@ class FakeContext:
 
     def abort(self, code, details: str) -> None:
         raise AbortError(code, details)
+
+
+class PeerContext(FakeContext):
+    """Context dengan alamat peer, seperti koneksi gRPC sungguhan."""
+
+    def __init__(self, peer: str = "ipv4:192.168.18.50:52000") -> None:
+        self._peer = peer
+
+    def peer(self) -> str:
+        return self._peer
 
 
 class CountingState:
@@ -266,3 +278,72 @@ def test_pembatalan_tidak_ditemukan_tidak_memberi_cache_sukses_palsu():
 
     assert hasil.success is True
     assert hasil.reservasi.reservation_id == booking.reservasi.reservation_id
+
+
+# -- Logging aktivitas server ----------------------------------------------
+
+
+def test_log_booking_sukses_memuat_konteks_operasi(caplog):
+    service, _, _, _ = _build()
+
+    with caplog.at_level(logging.INFO, logger="cinema.service"):
+        hasil = service.PesanKursi(_pesan("req-log", ["A1", "A2"]), PeerContext())
+
+    teks = "\n".join(record.getMessage() for record in caplog.records)
+    assert "rid=req-log" in teks
+    assert "seats=A1,A2" in teks
+    assert "cache=miss" in teks
+    assert hasil.reservasi.reservation_id in teks
+    # Alamat peer ikut tercatat -> terlihat request datang dari device mana.
+    assert "ipv4:192.168.18.50:52000" in teks
+
+
+def test_log_retry_menandai_cache_hit(caplog):
+    service, _, _, _ = _build()
+    request = _pesan("req-log", ["A1"])
+
+    with caplog.at_level(logging.INFO, logger="cinema.service"):
+        service.PesanKursi(request, FakeContext())
+        service.PesanKursi(request, FakeContext())
+
+    pesan = [record.getMessage() for record in caplog.records]
+    assert any("cache=miss" in teks for teks in pesan)
+    assert any("cache=hit" in teks for teks in pesan)
+
+
+def test_log_mismatch_payload_menggunakan_warning(caplog):
+    service, _, _, _ = _build()
+    service.PesanKursi(_pesan("req-log", ["A1"]), FakeContext())
+
+    with caplog.at_level(logging.INFO, logger="cinema.service"):
+        with pytest.raises(AbortError):
+            service.PesanKursi(_pesan("req-log", ["A2"]), FakeContext())
+
+    warning = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("MISMATCH payload" in r.getMessage() for r in warning)
+
+
+def test_log_pembatalan_sukses(caplog):
+    service, _, _, _ = _build()
+    booking = service.PesanKursi(_pesan("book-1", ["A1"]), FakeContext())
+
+    with caplog.at_level(logging.INFO, logger="cinema.service"):
+        service.BatalkanPesanan(
+            _batal("cancel-1", booking.reservasi.reservation_id), PeerContext()
+        )
+
+    teks = "\n".join(record.getMessage() for record in caplog.records)
+    assert "[batal]" in teks
+    assert f"reservasi={booking.reservasi.reservation_id}" in teks
+    assert "status=CANCELLED" in teks
+
+
+def test_log_pembatalan_tidak_ditemukan_menggunakan_warning(caplog):
+    service, _, _, _ = _build()
+
+    with caplog.at_level(logging.INFO, logger="cinema.service"):
+        with pytest.raises(AbortError):
+            service.BatalkanPesanan(_batal("cancel-1", "tidak-ada"), FakeContext())
+
+    warning = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("NOT_FOUND" in r.getMessage() for r in warning)
