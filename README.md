@@ -56,7 +56,7 @@ cinema-rpc/
 ├── frontend/                 # React + TS + Vite + Tailwind
 │   ├── src/{pages, hooks, services, components}
 │   └── .env.example
-├── tests/                    # pytest: booking, concurrency, retry, streaming, gateway, idempotency (80 test)
+├── tests/                    # pytest: booking, concurrency, retry, streaming, gateway, idempotency (85 test)
 ├── load_test/                # perf test + locust; hasil di results/
 └── scripts/generate_proto.*  # regenerasi stubs proto
 ```
@@ -189,6 +189,7 @@ Dan jalankan Vite dengan `npm run dev -- --host 0.0.0.0`.
 | `CORS_ORIGINS` | gateway | `http://localhost:5173,http://127.0.0.1:5173` | Origin frontend yang diizinkan (dipisah koma) |
 | `IDEMPOTENCY_TTL_SECONDS` | server | `86400` | TTL entri idempotency (detik); default 24 jam |
 | `IDEMPOTENCY_MAX_ENTRIES` | server | `10000` | Batas jumlah entri idempotency; eviction LRU bila penuh |
+| `LOG_LEVEL` | server | `INFO` | Level log aktivitas server (`DEBUG`/`INFO`/`WARNING`/`ERROR`) |
 | `VITE_API_URL` | frontend | `http://localhost:8000` | Alamat gateway dari browser |
 
 ## API Gateway (HTTP)
@@ -219,7 +220,7 @@ Demo tanpa gateway:
 ## Testing
 
 ```powershell
-# Full suite (booking, concurrency, retry, streaming, gateway, idempotency) — 80 test
+# Full suite (booking, concurrency, retry, streaming, gateway, idempotency) — 85 test
 .venv\Scripts\python.exe -m pytest tests -v
 
 # Perf test: skenario read c=1/5/20 + race booking; tulis hasil ke load_test/results/
@@ -253,6 +254,27 @@ POST /api/pesan
 ```
 
 Jika `request_id` tidak dikirim, gateway membuat UUID baru seperti sebelumnya (kompatibel dengan client lama). Catatan: client lama tanpa key tidak mendapat deduplikasi lintas retry HTTP.
+
+## Logging Aktivitas Server
+
+Server gRPC menulis satu baris log per RPC ke stdout (device 1), termasuk alamat
+peer sehingga terlihat request datang dari perangkat mana. Contoh:
+
+```text
+2026-11-02 10:15:01 INFO  cinema.server   Idempotency store siap: ttl=86400s max_entries=10000
+2026-11-02 10:15:01 INFO  cinema.server   Cinema gRPC Server berjalan di port 50051 (12 jadwal aktif, Ctrl+C untuk berhenti)
+2026-11-02 10:15:14 INFO  cinema.service  [pesan] peer=ipv4:192.168.18.50:52133 rid=550e... schedule=m-gerhana-1030 seats=A1,A2 -> OK reservasi=9f2c... cache=miss 1.8ms
+2026-11-02 10:15:15 INFO  cinema.service  [pesan] peer=ipv4:192.168.18.50:52133 rid=550e... schedule=m-gerhana-1030 seats=A1,A2 -> OK reservasi=9f2c... cache=hit 0.2ms
+2026-11-02 10:15:20 WARN  cinema.service  [pesan] peer=ipv4:192.168.18.50:52133 rid=550e... schedule=m-gerhana-1030 seats=A1,A2 -> MISMATCH payload
+2026-11-02 10:15:31 INFO  cinema.service  [batal] peer=ipv4:192.168.18.50:52133 rid=... reservasi=9f2c... status=CANCELLED cache=miss 0.4ms
+2026-11-02 10:16:02 INFO  cinema.service  [stream] mulai schedule=m-gerhana-1030 peer=ipv4:192.168.18.50:52134
+2026-11-02 10:18:40 INFO  cinema.service  [stream] selesai schedule=m-gerhana-1030 peer=ipv4:192.168.18.50:52134 durasi=158.2s
+```
+
+- `cache=hit` menandakan retry idempotent yang dilayani dari cache; `cache=miss` berarti operasi benar-benar dijalankan.
+- `MISMATCH payload` dan `NOT_FOUND` dicatat sebagai WARNING.
+- Level diatur lewat `LOG_LEVEL` (default `INFO`). Untuk load test gunakan `LOG_LEVEL=WARNING` agar penulisan log tidak menggerus throughput.
+- Log hanya observability: tidak mengubah state, response, atau protokol.
 
 ## Catatan Desain
 
