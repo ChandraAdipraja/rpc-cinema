@@ -11,7 +11,15 @@ import { Spinner } from "../components/ui/Spinner"
 
 export function ReservationPage() {
   const { reservationId } = useParams<{ reservationId: string }>()
-  const { reservation, isLoading, error, notFound, cancelling, cancel } = useReservation(reservationId)
+  const {
+    reservation,
+    isLoading,
+    error,
+    notFound,
+    cancelling,
+    cancel,
+    unknownCancelResult,
+  } = useReservation(reservationId)
   const [jadwalList, setJadwalList] = useState<Jadwal[] | null>(null)
 
   useEffect(() => {
@@ -61,6 +69,12 @@ export function ReservationPage() {
       </header>
 
       {error && <ErrorAlert message={error} />}
+      {unknownCancelResult && !cancelling && (
+        <p className="text-xs text-neutral-400">
+          Hasil pembatalan belum diketahui. Tekan "Batalkan Pesanan" untuk mencoba ulang dengan permintaan
+          yang sama — backend menjamin satu request_id tidak dieksekusi dua kali.
+        </p>
+      )}
 
       {reservation && (
         <section className="rounded-xl border border-neutral-800 bg-neutral-900 p-6">

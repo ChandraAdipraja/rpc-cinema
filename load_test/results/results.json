@@ -4,10 +4,10 @@
     "concurrency": 1,
     "total_requests": 200,
     "failed_rpc_errors": 0,
-    "elapsed_seconds": 0.08563259999937145,
-    "avg_latency_ms": 0.3941035001844284,
-    "p95_latency_ms": 0.46256499736045953,
-    "throughput_rps": 2335.5591211929573,
+    "elapsed_seconds": 0.344456300001184,
+    "avg_latency_ms": 1.6145239999241312,
+    "p95_latency_ms": 3.559175000191317,
+    "throughput_rps": 580.625176544347,
     "success_rate_pct": 100.0,
     "details": {
       "error_codes": []
@@ -16,18 +16,92 @@
   {
     "scenario": "race",
     "concurrency": 1,
-    "total_requests": 1,
+    "total_requests": 10,
     "failed_rpc_errors": 0,
-    "elapsed_seconds": 0.0005539999983739108,
-    "avg_latency_ms": 0.5539999983739108,
-    "p95_latency_ms": 0.5539999983739108,
-    "throughput_rps": 1805.054156922706,
+    "elapsed_seconds": 5.781112900000153,
+    "avg_latency_ms": 1.4294500004325528,
+    "p95_latency_ms": 2.3046200010867324,
+    "throughput_rps": 1.7297707505417748,
     "success_rate_pct": 100.0,
     "details": {
-      "berhasil_pesan": 1,
+      "rounds": 10,
+      "winners": 10,
+      "berhasil_pesan": 10,
       "ditolak_kursi_terisi": 0,
       "error_rpc": 0,
-      "double_booking": 0
+      "double_booking": 0,
+      "per_round": [
+        {
+          "round": 1,
+          "seat": "A1",
+          "winners": 1,
+          "ditolak_kursi_terisi": 0,
+          "error_rpc": 0
+        },
+        {
+          "round": 2,
+          "seat": "A2",
+          "winners": 1,
+          "ditolak_kursi_terisi": 0,
+          "error_rpc": 0
+        },
+        {
+          "round": 3,
+          "seat": "A3",
+          "winners": 1,
+          "ditolak_kursi_terisi": 0,
+          "error_rpc": 0
+        },
+        {
+          "round": 4,
+          "seat": "B1",
+          "winners": 1,
+          "ditolak_kursi_terisi": 0,
+          "error_rpc": 0
+        },
+        {
+          "round": 5,
+          "seat": "B2",
+          "winners": 1,
+          "ditolak_kursi_terisi": 0,
+          "error_rpc": 0
+        },
+        {
+          "round": 6,
+          "seat": "B3",
+          "winners": 1,
+          "ditolak_kursi_terisi": 0,
+          "error_rpc": 0
+        },
+        {
+          "round": 7,
+          "seat": "A1",
+          "winners": 1,
+          "ditolak_kursi_terisi": 0,
+          "error_rpc": 0
+        },
+        {
+          "round": 8,
+          "seat": "A2",
+          "winners": 1,
+          "ditolak_kursi_terisi": 0,
+          "error_rpc": 0
+        },
+        {
+          "round": 9,
+          "seat": "A3",
+          "winners": 1,
+          "ditolak_kursi_terisi": 0,
+          "error_rpc": 0
+        },
+        {
+          "round": 10,
+          "seat": "B1",
+          "winners": 1,
+          "ditolak_kursi_terisi": 0,
+          "error_rpc": 0
+        }
+      ]
     }
   },
   {
@@ -35,10 +109,10 @@
     "concurrency": 5,
     "total_requests": 500,
     "failed_rpc_errors": 0,
-    "elapsed_seconds": 0.11769919999642298,
-    "avg_latency_ms": 1.0328221999516245,
-    "p95_latency_ms": 1.2004699989120127,
-    "throughput_rps": 4248.117234570801,
+    "elapsed_seconds": 0.279980199997226,
+    "avg_latency_ms": 2.451232999934291,
+    "p95_latency_ms": 3.962714997942385,
+    "throughput_rps": 1785.8405701722975,
     "success_rate_pct": 100.0,
     "details": {
       "error_codes": []
@@ -47,18 +121,92 @@
   {
     "scenario": "race",
     "concurrency": 5,
-    "total_requests": 5,
+    "total_requests": 50,
     "failed_rpc_errors": 0,
-    "elapsed_seconds": 0.0011426000019127969,
-    "avg_latency_ms": 0.8564199997636024,
-    "p95_latency_ms": 1.263630004177685,
-    "throughput_rps": 4375.984589208499,
+    "elapsed_seconds": 5.315910699999222,
+    "avg_latency_ms": 3.271571999648586,
+    "p95_latency_ms": 9.472624998306856,
+    "throughput_rps": 9.405726096942772,
     "success_rate_pct": 100.0,
     "details": {
-      "berhasil_pesan": 1,
-      "ditolak_kursi_terisi": 4,
+      "rounds": 10,
+      "winners": 10,
+      "berhasil_pesan": 10,
+      "ditolak_kursi_terisi": 40,
       "error_rpc": 0,
-      "double_booking": 0
+      "double_booking": 0,
+      "per_round": [
+        {
+          "round": 1,
+          "seat": "A1",
+          "winners": 1,
+          "ditolak_kursi_terisi": 4,
+          "error_rpc": 0
+        },
+        {
+          "round": 2,
+          "seat": "A2",
+          "winners": 1,
+          "ditolak_kursi_terisi": 4,
+          "error_rpc": 0
+        },
+        {
+          "round": 3,
+          "seat": "A3",
+          "winners": 1,
+          "ditolak_kursi_terisi": 4,
+          "error_rpc": 0
+        },
+        {
+          "round": 4,
+          "seat": "B1",
+          "winners": 1,
+          "ditolak_kursi_terisi": 4,
+          "error_rpc": 0
+        },
+        {
+          "round": 5,
+          "seat": "B2",
+          "winners": 1,
+          "ditolak_kursi_terisi": 4,
+          "error_rpc": 0
+        },
+        {
+          "round": 6,
+          "seat": "B3",
+          "winners": 1,
+          "ditolak_kursi_terisi": 4,
+          "error_rpc": 0
+        },
+        {
+          "round": 7,
+          "seat": "A1",
+          "winners": 1,
+          "ditolak_kursi_terisi": 4,
+          "error_rpc": 0
+        },
+        {
+          "round": 8,
+          "seat": "A2",
+          "winners": 1,
+          "ditolak_kursi_terisi": 4,
+          "error_rpc": 0
+        },
+        {
+          "round": 9,
+          "seat": "A3",
+          "winners": 1,
+          "ditolak_kursi_terisi": 4,
+          "error_rpc": 0
+        },
+        {
+          "round": 10,
+          "seat": "B1",
+          "winners": 1,
+          "ditolak_kursi_terisi": 4,
+          "error_rpc": 0
+        }
+      ]
     }
   },
   {
@@ -66,10 +214,10 @@
     "concurrency": 20,
     "total_requests": 1000,
     "failed_rpc_errors": 0,
-    "elapsed_seconds": 0.2516942000002018,
-    "avg_latency_ms": 4.045737500062387,
-    "p95_latency_ms": 4.381029999603925,
-    "throughput_rps": 3973.075263550762,
+    "elapsed_seconds": 0.6182783000003838,
+    "avg_latency_ms": 9.900416000000405,
+    "p95_latency_ms": 11.754865000330028,
+    "throughput_rps": 1617.3946263347416,
     "success_rate_pct": 100.0,
     "details": {
       "error_codes": []
@@ -78,18 +226,92 @@
   {
     "scenario": "race",
     "concurrency": 20,
-    "total_requests": 20,
+    "total_requests": 200,
     "failed_rpc_errors": 0,
-    "elapsed_seconds": 0.0030421000010392163,
-    "avg_latency_ms": 2.2043449996999698,
-    "p95_latency_ms": 3.0420100010815077,
-    "throughput_rps": 6574.405835826492,
+    "elapsed_seconds": 5.541990399997303,
+    "avg_latency_ms": 5.3749594999499095,
+    "p95_latency_ms": 8.668074998968223,
+    "throughput_rps": 36.08811736665898,
     "success_rate_pct": 100.0,
     "details": {
-      "berhasil_pesan": 1,
-      "ditolak_kursi_terisi": 19,
+      "rounds": 10,
+      "winners": 10,
+      "berhasil_pesan": 10,
+      "ditolak_kursi_terisi": 190,
       "error_rpc": 0,
-      "double_booking": 0
+      "double_booking": 0,
+      "per_round": [
+        {
+          "round": 1,
+          "seat": "A1",
+          "winners": 1,
+          "ditolak_kursi_terisi": 19,
+          "error_rpc": 0
+        },
+        {
+          "round": 2,
+          "seat": "A2",
+          "winners": 1,
+          "ditolak_kursi_terisi": 19,
+          "error_rpc": 0
+        },
+        {
+          "round": 3,
+          "seat": "A3",
+          "winners": 1,
+          "ditolak_kursi_terisi": 19,
+          "error_rpc": 0
+        },
+        {
+          "round": 4,
+          "seat": "B1",
+          "winners": 1,
+          "ditolak_kursi_terisi": 19,
+          "error_rpc": 0
+        },
+        {
+          "round": 5,
+          "seat": "B2",
+          "winners": 1,
+          "ditolak_kursi_terisi": 19,
+          "error_rpc": 0
+        },
+        {
+          "round": 6,
+          "seat": "B3",
+          "winners": 1,
+          "ditolak_kursi_terisi": 19,
+          "error_rpc": 0
+        },
+        {
+          "round": 7,
+          "seat": "A1",
+          "winners": 1,
+          "ditolak_kursi_terisi": 19,
+          "error_rpc": 0
+        },
+        {
+          "round": 8,
+          "seat": "A2",
+          "winners": 1,
+          "ditolak_kursi_terisi": 19,
+          "error_rpc": 0
+        },
+        {
+          "round": 9,
+          "seat": "A3",
+          "winners": 1,
+          "ditolak_kursi_terisi": 19,
+          "error_rpc": 0
+        },
+        {
+          "round": 10,
+          "seat": "B1",
+          "winners": 1,
+          "ditolak_kursi_terisi": 19,
+          "error_rpc": 0
+        }
+      ]
     }
   }
 ]

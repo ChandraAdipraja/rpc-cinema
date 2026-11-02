@@ -46,7 +46,8 @@ from cinema_client import CinemaRpcClient
 CONCURRENCY_LEVELS = [1, 5, 20]
 REQUESTS_PER_WORKER = {1: 200, 5: 100, 20: 50}
 WARMUP_REQUESTS = 10
-RACE_SEAT = "A1"
+RACE_SEATS = ("A1", "A2", "A3", "B1", "B2", "B3")
+RACE_ROUNDS = 10
 SERVER_STARTUP_TIMEOUT_S = 15.0
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 
@@ -176,16 +177,16 @@ def run_read_scenario(port: int, concurrency: int, requests_each: int) -> Scenar
     )
 
 
-def run_race_scenario(port: int, concurrency: int) -> ScenarioResult:
-    process = start_grpc_server(port)
-    schedule_id = _wait_ready(port)
+def _run_race_round(
+    port: int, schedule_id: str, seat: str, concurrency: int
+) -> tuple[list[Attempt], int]:
+    """Satu ronde race pada kursi yang sama; kembalikan attempt + jumlah pemenang."""
     attempts: list[Attempt] = []
-    booking_results: list[bool] = []
     lock = threading.Lock()
     barrier = threading.Barrier(concurrency)
 
     def worker(_: int) -> None:
-        client = CinemaRpcClient(target=f"localhost:{port}", timeout=5.0, max_retries=0, backoff_base=0.1)
+        client = CinemaRpcClient(target=f"localhost:{port}", timeout=5.0, max_retries=0)
         try:
             attempt = Attempt(latency_ms=0.0, success=False)
             # Warmup: buka koneksi + resolve DNS SEBELUM barrier supaya yang
@@ -194,7 +195,7 @@ def run_race_scenario(port: int, concurrency: int) -> ScenarioResult:
             barrier.wait()
             start = time.perf_counter()
             try:
-                response = client.pesan_kursi(uuid.uuid4().hex, schedule_id, [RACE_SEAT])
+                response = client.pesan_kursi(uuid.uuid4().hex, schedule_id, [seat])
                 attempt.success = response.success
             except grpc.RpcError as err:
                 attempt.error_code = err.code().name
@@ -202,36 +203,76 @@ def run_race_scenario(port: int, concurrency: int) -> ScenarioResult:
                 attempt.latency_ms = (time.perf_counter() - start) * 1000.0
             with lock:
                 attempts.append(attempt)
-                if attempt.success:
-                    booking_results.append(True)
         finally:
             client.close()
 
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         list(pool.map(worker, range(concurrency)))
 
-    stop_server(process)
+    winners = sum(1 for attempt in attempts if attempt.success)
+    return attempts, winners
 
-    berhasil = len(booking_results)
-    ditolak = sum(1 for a in attempts if not a.success and a.error_code is None)
+
+def run_race_scenario(concurrency: int, rounds: int = RACE_ROUNDS) -> ScenarioResult:
+    """Race berulang: tiap ronde server baru + kursi berbeda (A1..B3 berputar)."""
+    attempts: list[Attempt] = []
+    per_round: list[dict] = []
+    total_winners = 0
+    double_booking = 0
+
+    wall_start = time.perf_counter()
+    for round_index in range(rounds):
+        seat = RACE_SEATS[round_index % len(RACE_SEATS)]
+        port = free_port()
+        process = start_grpc_server(port)
+        try:
+            schedule_id = _wait_ready(port)
+            round_attempts, winners = _run_race_round(
+                port, schedule_id, seat, concurrency
+            )
+        finally:
+            stop_server(process)
+
+        round_errors = sum(1 for a in round_attempts if a.error_code is not None)
+        round_rejected = sum(
+            1 for a in round_attempts if not a.success and a.error_code is None
+        )
+        per_round.append(
+            {
+                "round": round_index + 1,
+                "seat": seat,
+                "winners": winners,
+                "ditolak_kursi_terisi": round_rejected,
+                "error_rpc": round_errors,
+            }
+        )
+        attempts.extend(round_attempts)
+        total_winners += winners
+        double_booking += max(0, winners - 1)
+    elapsed = time.perf_counter() - wall_start
+
     rpc_errors = sum(1 for a in attempts if a.error_code is not None)
+    ditolak = sum(1 for a in attempts if not a.success and a.error_code is None)
     latencies = [a.latency_ms for a in attempts]
-    elapsed = max(latencies) / 1000.0
+    total = len(attempts)
     return ScenarioResult(
         scenario="race",
         concurrency=concurrency,
-        total_requests=len(attempts),
+        total_requests=total,
         failed_rpc_errors=rpc_errors,
         elapsed_seconds=elapsed,
         avg_latency_ms=statistics.mean(latencies) if latencies else 0.0,
         p95_latency_ms=_p95(latencies),
-        throughput_rps=len(attempts) / elapsed if elapsed > 0 else 0.0,
+        throughput_rps=total / elapsed if elapsed > 0 else 0.0,
         success_rate_pct=100.0,  # semua usaha mendapat response yang valid
         details={
-            "berhasil_pesan": berhasil,
+            "rounds": rounds,
+            "winners": total_winners,
+            "berhasil_pesan": total_winners,
             "ditolak_kursi_terisi": ditolak,
             "error_rpc": rpc_errors,
-            "double_booking": 0 if berhasil <= 1 else berhasil - 1,
+            "double_booking": double_booking,
+            "per_round": per_round,
         },
     )
 
@@ -295,9 +336,11 @@ def build_report(results: list[ScenarioResult]) -> tuple[Path, Path]:
         "- Target langsung: gRPC Server (belum melalui FastAPI Gateway).",
         f"- Skenario `read`: 1 client = 1 THREAD = 1 koneksi gRPC; tanpa think-time;",
         "  jumlah request per level: " + ", ".join(f"{c} client x {REQUESTS_PER_WORKER[c]}" for c in CONCURRENCY_LEVELS) + " req.",
-        f"- Skenario `race`: seluruh client memanggil PesanKursi kursi {RACE_SEAT} serentak (barrier);",
-        "  tiap client lakukan warmup koneksi 1x LihatDaftarKursi sebelum barrier agar yang",
-        "  terukur hanya latensi booking, bukan DNS/TCP setup.",
+        f"- Skenario `race`: {RACE_ROUNDS} ronde per level; tiap ronde memakai server baru",
+        f"  (state fresh) dan kursi bergiliran {', '.join(RACE_SEATS)} (berputar bila ronde > 6);",
+        "  seluruh client pada satu ronde memanggil PesanKursi untuk kursi yang sama serentak",
+        "  (barrier); tiap client lakukan warmup koneksi 1x LihatDaftarKursi sebelum barrier agar",
+        "  yang terukur hanya latensi booking, bukan DNS/TCP setup.",
         "- Server: 1 instance gRPC baru per skenario (state in-memory selalu fresh),",
         "  ThreadPoolExecutor 32 worker, port dinamis.",
         "- Latensi diukur dengan `time.perf_counter()` per panggilan RPC; warmup 10 call",
@@ -316,31 +359,35 @@ def build_report(results: list[ScenarioResult]) -> tuple[Path, Path]:
     ]
     lines.extend(r.to_row() for r in read_results)
     race_header = (
-        "| Jenis | Client | Total Attempt | RPC Error | Avg (ms) | P95 (ms) | Latensi terlama (ms) | Success Rate* |"
+        "| Jenis | Client | Ronde | Total Attempt | Menang | Double Booking | RPC Error | "
+        "Avg (ms) | P95 (ms) | Success Rate* |"
     )
     lines += [
         "",
-        "## Tabel hasil skenario `race` (PesanKursi, kursi sama)",
+        "## Tabel hasil skenario `race` (PesanKursi, kursi sama per ronde)",
         "",
         race_header,
-        "|---|---|---|---|---|---|---|---|",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     lines.extend(
-        f"| race | {r.concurrency} | {r.total_requests} | {r.failed_rpc_errors} | "
-        f"{r.avg_latency_ms:.2f} | {r.p95_latency_ms:.2f} | {r.elapsed_seconds * 1000:.2f} | "
-        f"{r.success_rate_pct:.1f}% |"
+        f"| race | {r.concurrency} | {r.details['rounds']} | {r.total_requests} | "
+        f"{r.details['winners']} | {r.details['double_booking']} | {r.failed_rpc_errors} | "
+        f"{r.avg_latency_ms:.2f} | {r.p95_latency_ms:.2f} | {r.success_rate_pct:.1f}% |"
         for r in race_results
     )
     lines += [
         "",
         "\\* Race test: \"success rate\" 100% berarti SEMUA attempt mendapat response valid",
-        "(1 yang berhasil memesan, sisanya ditolak server karena kursi sudah terisi —",
-        "ini perilaku yang BENAR). \"Latensi terlama\" = attempt paling lambat di antara",
-        "seluruh client pada level tersebut (biasanya pemenang kursi). Rincian per level:",
+        "(tepat 1 yang berhasil memesan per ronde, sisanya ditolak server karena kursi sudah",
+        "terisi — ini perilaku yang BENAR). `Double Booking` harus 0; nilainya dihitung dari",
+        "kelebihan pemenang pada setiap ronde. Rincian per level:",
     ]
-    lines += [f"- {r.concurrency} client: {r.details['berhasil_pesan']} berhasil, "
-              f"{r.details['ditolak_kursi_terisi']} ditolak, {r.details['error_rpc']} RPC error, "
-              f"double booking = {r.details['double_booking']}" for r in race_results]
+    lines += [
+        f"- {r.concurrency} client: {r.details['rounds']} ronde, "
+        f"{r.details['winners']} menang, {r.details['ditolak_kursi_terisi']} ditolak, "
+        f"{r.details['error_rpc']} RPC error, double booking = {r.details['double_booking']}"
+        for r in race_results
+    ]
 
     report_path = RESULTS_DIR / "summary.md"
     report_path.write_text("\n".join(lines), encoding="utf-8")
@@ -365,13 +412,12 @@ def main() -> int:
             f"errors={result.failed_rpc_errors}"
         )
 
-        port = free_port()
-        print(f"[perf] race   c={concurrency} port={port} ...")
-        race = run_race_scenario(port, concurrency)
+        print(f"[perf] race   c={concurrency} rounds={RACE_ROUNDS} ...")
+        race = run_race_scenario(concurrency)
         all_results.append(race)
         print(
-            f"[perf] race   c={concurrency}: "
-            f"{race.details['berhasil_pesan']} sukses / {race.details['ditolak_kursi_terisi']} ditolak "
+            f"[perf] race   c={concurrency}: {race.details['rounds']} ronde, "
+            f"{race.details['winners']} menang / {race.details['ditolak_kursi_terisi']} ditolak "
             f"(double_booking={race.details['double_booking']})"
         )
 

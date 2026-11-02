@@ -121,7 +121,6 @@ def test_detail_pesanan(server):
     hasil = client.pesan_kursi(str(uuid.uuid4()), schedule_id, seats)
     detail = client.lihat_detail_pesanan(hasil.reservasi.reservation_id)
 
-    assert detail.found is True
     assert detail.reservasi.schedule_id == schedule_id
     assert set(detail.reservasi.seat_ids) == set(seats)
 

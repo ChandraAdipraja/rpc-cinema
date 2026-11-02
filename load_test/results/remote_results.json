@@ -1,0 +1,43 @@
+{
+  "target": "192.168.18.229:50051",
+  "schedule_id": "m-gerhana-1030",
+  "timestamp": "2026-11-02T16:37:38",
+  "host": "DESKTOP-DNJ4J66",
+  "platform": "Windows 11",
+  "python": "3.14.7",
+  "levels": [
+    {
+      "concurrency": 1,
+      "total_requests": 200,
+      "failed_rpc_errors": 0,
+      "elapsed_seconds": 1.6147189000002982,
+      "avg_latency_ms": 8.072085499916284,
+      "p95_latency_ms": 16.5731400004006,
+      "throughput_rps": 123.86056792916901,
+      "success_rate_pct": 100.0,
+      "error_codes": []
+    },
+    {
+      "concurrency": 5,
+      "total_requests": 500,
+      "failed_rpc_errors": 0,
+      "elapsed_seconds": 1.6102195999992546,
+      "avg_latency_ms": 14.549859000013385,
+      "p95_latency_ms": 31.96531999947183,
+      "throughput_rps": 310.51665251139127,
+      "success_rate_pct": 100.0,
+      "error_codes": []
+    },
+    {
+      "concurrency": 20,
+      "total_requests": 1000,
+      "failed_rpc_errors": 0,
+      "elapsed_seconds": 1.9542311000004702,
+      "avg_latency_ms": 38.71746809999968,
+      "p95_latency_ms": 76.24759999980597,
+      "throughput_rps": 511.7102066381808,
+      "success_rate_pct": 100.0,
+      "error_codes": []
+    }
+  ]
+}
