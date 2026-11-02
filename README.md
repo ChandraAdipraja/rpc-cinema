@@ -233,6 +233,25 @@ Hasil perf ditulis ke `load_test/results/summary.md` + `chart.png`. Ringkasannya
 - race booking di 1/5/20 client konkuren: **selalu tepat 1 pemenang, `double_booking=0`**.
 - locust UI opsional: `.venv\Scripts\python.exe -m locust -f load_test\locustfile.py` (dengan server+gateway jalan).
 
+### Uji dari device lain (LAN)
+
+`perf_test.py` selalu men-spawn server lokal baru, jadi ia mengukur mesin yang menjalankannya. Untuk mengukur server yang **sudah berjalan** di device lain (read-only, tanpa booking):
+
+```powershell
+# device 1 (server)
+$env:LOG_LEVEL="WARNING"
+.venv\Scripts\python.exe grpc_server\server.py
+
+# device 2 (penguji) — sekali saja: venv + stub proto (scripts\generate_proto)
+$env:GRPC_TARGET="192.168.18.229:50051"
+.venv\Scripts\python.exe load_test\remote_perf_test.py
+```
+
+Hasil: `load_test/results/remote_summary.md`, `remote_results.json`, dan `remote_chart.png`
+(grafik dilewati bila matplotlib belum terpasang). Angka termasuk RTT jaringan, jadi
+jangan dibandingkan langsung dengan hasil `perf_test.py` di mesin yang sama. Pastikan
+inbound TCP `50051` terbuka di firewall device server.
+
 ## Idempotency (request_id)
 
 Setiap operasi yang mengubah state (`PesanKursi`, `BatalkanPesanan`) menerima
