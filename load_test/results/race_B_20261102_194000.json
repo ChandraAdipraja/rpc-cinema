@@ -1,0 +1,82 @@
+{
+  "label": "B",
+  "target": "192.168.18.229:50051",
+  "schedule_id": "m-gerhana-1030",
+  "start_at": "19:40:00",
+  "generated_at": "2026-11-02T19:40:00",
+  "rounds": [
+    {
+      "round": 1,
+      "label": "B",
+      "seat": "A1",
+      "fired_at": "19:40:00.018",
+      "outcome": "MENANG",
+      "latency_ms": 18.149100003938656,
+      "request_id": "4a8da052afaf4fdc8672afb89a82266f",
+      "reservation_id": "6fb674452ef14874855de75c28a1d814",
+      "detail": "Reservasi berhasil"
+    },
+    {
+      "round": 2,
+      "label": "B",
+      "seat": "A2",
+      "fired_at": "19:40:00.024",
+      "outcome": "MENANG",
+      "latency_ms": 5.794199998490512,
+      "request_id": "dcd0b28abf464f0fa5b4634835aff515",
+      "reservation_id": "ae4445c2f63c4656a79c526adca4a2a4",
+      "detail": "Reservasi berhasil"
+    },
+    {
+      "round": 3,
+      "label": "B",
+      "seat": "A3",
+      "fired_at": "19:40:00.030",
+      "outcome": "MENANG",
+      "latency_ms": 5.52859999879729,
+      "request_id": "89b9b1c3baac4aef8caecade085c26de",
+      "reservation_id": "2a0d99be7e454a70b9e6844912ad76c0",
+      "detail": "Reservasi berhasil"
+    },
+    {
+      "round": 4,
+      "label": "B",
+      "seat": "B1",
+      "fired_at": "19:40:00.033",
+      "outcome": "MENANG",
+      "latency_ms": 3.3276000031037256,
+      "request_id": "307fe4d26929469ea1d261905d53cf3e",
+      "reservation_id": "a084d5b952d64970a184fda86214c486",
+      "detail": "Reservasi berhasil"
+    },
+    {
+      "round": 5,
+      "label": "B",
+      "seat": "B2",
+      "fired_at": "19:40:00.037",
+      "outcome": "MENANG",
+      "latency_ms": 3.4333000003243797,
+      "request_id": "4f08fbb24fcb4fb7a87258dc8e4cd591",
+      "reservation_id": "601516303b7848d9afc1f0a1fbeaed04",
+      "detail": "Reservasi berhasil"
+    },
+    {
+      "round": 6,
+      "label": "B",
+      "seat": "B3",
+      "fired_at": "19:40:00.040",
+      "outcome": "MENANG",
+      "latency_ms": 2.8862999970442615,
+      "request_id": "fc85fec258b34e818bf43a77977e4c73",
+      "reservation_id": "3b2e71b88ce645a3b5bf09160c1584e0",
+      "detail": "Reservasi berhasil"
+    }
+  ],
+  "summary": {
+    "rounds": 6,
+    "menang": 6,
+    "konflik": 0,
+    "error": 0,
+    "avg_latency_ms": 6.52
+  }
+}
